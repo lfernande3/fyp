@@ -1,0 +1,292 @@
+================================================================================
+CONFIGURATION SYSTEM - Quick Reference
+================================================================================
+
+NEW FILES CREATED:
+==================
+
+1. config.py (350 lines)
+   - Centralized parameter configuration
+   - 7 preset scenarios
+   - Validation and helper functions
+
+2. run_simulation.py (230 lines)
+   - Main runner using config.py
+   - Command-line interface
+   - Preset support
+
+3. CONFIG_GUIDE.md (450 lines)
+   - Complete configuration guide
+   - Parameter reference
+   - Use case examples
+
+================================================================================
+QUICK START
+================================================================================
+
+STEP 1: Edit Parameters
+------------------------
+Open config.py and modify:
+
+    n_nodes = 20           # Change number of nodes
+    lambda_arrival = 0.15  # Change traffic
+    q_transmit = 0.08      # Change transmission prob
+    ts_idle = 10           # Change idle timeout
+
+STEP 2: Run Simulation
+-----------------------
+    python run_simulation.py
+
+That's it! Results will be displayed automatically.
+
+================================================================================
+COMMAND-LINE OPTIONS
+================================================================================
+
+Basic Usage:
+    python run_simulation.py                 # Use config.py settings
+
+View Configuration:
+    python run_simulation.py --print-config  # Show current config
+    python run_simulation.py --validate      # Validate config
+
+Use Presets:
+    python run_simulation.py --preset low    # Low traffic (λ=0.05)
+    python run_simulation.py --preset medium # Medium traffic (λ=0.1)
+    python run_simulation.py --preset high   # High traffic (λ=0.2)
+    python run_simulation.py --preset large  # Large network (50 nodes)
+    python run_simulation.py --preset quick  # Quick test (fast)
+    python run_simulation.py --preset energy # Energy-optimized
+    python run_simulation.py --preset delay  # Delay-optimized
+
+Disable Visualization:
+    python run_simulation.py --no-viz        # Text results only
+
+================================================================================
+CONFIGURATION PARAMETERS
+================================================================================
+
+System Parameters (Most Important):
+------------------------------------
+n_nodes          = 10      # Number of devices
+lambda_arrival   = 0.1     # Packet arrival rate (0.01-0.5)
+q_transmit       = 0.05    # Transmission probability (0.01-0.3)
+ts_idle          = 5       # Idle timeout before sleep (1-20)
+tw_wakeup        = 2       # Wake-up duration (1-5)
+
+Energy Parameters:
+------------------
+E_initial        = 10000   # Battery capacity
+PS_sleep         = 0.1     # Sleep power
+PW_wakeup        = 1.0     # Wake-up power
+PT_transmit      = 5.0     # Transmit power
+PB_busy          = 0.5     # Busy/idle power
+
+Simulation Parameters:
+----------------------
+simulation_time  = 5000    # Duration in slots
+random_seed      = 42      # For reproducibility (None=random)
+
+Optimization Parameters:
+------------------------
+q_optimization_range     = (0.01, 0.3)
+q_optimization_samples   = 20
+n_runs_for_averaging     = 3
+enable_parallel_processing = False
+
+Visualization Parameters:
+-------------------------
+save_plots       = False   # Save plots to files
+output_directory = "results"
+plot_format      = 'png'
+plot_dpi         = 150
+show_plots       = True
+
+================================================================================
+PRESET CONFIGURATIONS
+================================================================================
+
+Access in Python:
+    from config import Presets
+    params = Presets.LOW_TRAFFIC
+
+Available Presets:
+    - LOW_TRAFFIC:      λ=0.05, q=0.08 (light load)
+    - MEDIUM_TRAFFIC:   λ=0.1,  q=0.05 (moderate load)
+    - HIGH_TRAFFIC:     λ=0.2,  q=0.03 (high load)
+    - LARGE_NETWORK:    50 nodes, q=0.02
+    - QUICK_TEST:       5 nodes, T=1000 (fast)
+    - ENERGY_OPTIMIZED: q=0.08, ts=1 (maximize lifetime)
+    - DELAY_OPTIMIZED:  q=0.03, ts=20 (minimize delay)
+
+================================================================================
+USING CONFIG IN YOUR SCRIPTS
+================================================================================
+
+Method 1: Import get_base_params()
+-----------------------------------
+    import simpy
+    from simulator import Simulator
+    import config
+    
+    params = config.get_base_params()
+    env = simpy.Environment()
+    sim = Simulator(env=env, **params)
+    sim.run()
+
+Method 2: Import Individual Parameters
+---------------------------------------
+    from config import (
+        n_nodes, lambda_arrival, q_transmit,
+        ts_idle, tw_wakeup, E_initial,
+        simulation_time, random_seed
+    )
+    
+    sim = Simulator(
+        env=env,
+        n_nodes=n_nodes,
+        lambda_arrival=lambda_arrival,
+        # ... etc
+    )
+
+Method 3: Use Presets
+---------------------
+    from config import Presets
+    
+    params = Presets.ENERGY_OPTIMIZED
+    sim = Simulator(env=env, **params)
+
+================================================================================
+HELPER FUNCTIONS
+================================================================================
+
+config.get_base_params()
+    Returns dictionary of all current parameters
+
+config.print_config()
+    Displays current configuration in readable format
+
+config.validate_config()
+    Checks parameters and warns about potential issues
+
+Usage:
+    import config
+    config.print_config()
+    config.validate_config()
+
+Or from command line:
+    python config.py           # Prints and validates
+    python run_simulation.py --print-config
+    python run_simulation.py --validate
+
+================================================================================
+EXAMPLE WORKFLOWS
+================================================================================
+
+1. Quick Test with Different Traffic:
+   ----------------------------------
+   # Edit config.py:
+   lambda_arrival = 0.05
+   
+   # Run:
+   python run_simulation.py
+   
+   # Edit again:
+   lambda_arrival = 0.2
+   
+   # Run again:
+   python run_simulation.py
+
+2. Find Optimal Parameters:
+   ------------------------
+   # Run optimization:
+   python example_usage.py  # Example 3
+   
+   # Update config.py with optimal values:
+   q_transmit = 0.0782  # (found by optimizer)
+   
+   # Run with optimal config:
+   python run_simulation.py
+
+3. Compare Configurations:
+   -----------------------
+   python run_simulation.py --preset energy
+   python run_simulation.py --preset delay
+   # Compare results
+
+4. Parameter Sweep from Config:
+   ----------------------------
+   from optimizer import parameter_sweep
+   import config
+   import numpy as np
+   
+   results = parameter_sweep(
+       base_params=config.get_base_params(),
+       sweep_param='q_transmit',
+       sweep_values=np.linspace(0.01, 0.3, 20)
+   )
+
+================================================================================
+VALIDATION AND WARNINGS
+================================================================================
+
+The validation system checks:
+- Parameter ranges (warns if unusual)
+- Power hierarchy (PS < PB < PT)
+- Simulation time (warns if too short/long)
+- Network load (warns if exceeds Aloha capacity 0.368)
+
+Run validation:
+    python run_simulation.py --validate
+
+Example warning:
+    ⚠ Configuration Warnings:
+      1. Network load=0.450 exceeds Aloha capacity (0.368)
+
+================================================================================
+FILE STRUCTURE
+================================================================================
+
+fyp/
+├── config.py               ← EDIT THIS for parameters
+├── run_simulation.py       ← RUN THIS for simulation
+├── CONFIG_GUIDE.md         ← READ THIS for detailed help
+├── CONFIG_SUMMARY.txt      ← THIS FILE (quick reference)
+│
+├── simulator.py            (Core engine)
+├── optimizer.py            (Optimization tools)
+├── visualizer.py           (Plotting functions)
+├── example_usage.py        (Advanced examples)
+├── quick_start.py          (Simple demo)
+│
+├── README.md               (Full documentation)
+├── GETTING_STARTED.md      (Setup guide)
+└── requirements.txt        (Dependencies)
+
+================================================================================
+BENEFITS OF CONFIGURATION FILE
+================================================================================
+
+✓ No need to edit multiple files
+✓ All parameters in one place
+✓ Easy to switch between scenarios (presets)
+✓ Validation catches errors before running
+✓ Consistent parameters across runs
+✓ Easy to share configurations
+✓ Command-line interface for batch runs
+
+================================================================================
+NEXT STEPS
+================================================================================
+
+1. Edit config.py with your desired parameters
+2. Run: python run_simulation.py
+3. Review results
+4. Adjust parameters and repeat
+
+For more help:
+- Read CONFIG_GUIDE.md for detailed instructions
+- Read README.md for full documentation
+- Run: python run_simulation.py --help
+
+================================================================================
