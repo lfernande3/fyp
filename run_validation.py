@@ -1,7 +1,5 @@
 """
 Standalone script to run validation and sanity checks.
-
-Date: February 10, 2026
 """
 
 from src.validation import run_small_scale_test, SanityChecker
