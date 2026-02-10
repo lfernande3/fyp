@@ -1,0 +1,28 @@
+# Sleep-Based Low-Latency Access for M2M Communications Simulator
+# Requirements for Python 3.8+
+
+# Core simulation
+simpy>=4.0.1
+
+# Numerical computing
+numpy>=1.21.0
+
+# Data analysis
+pandas>=1.3.0
+
+# Scientific computing
+scipy>=1.7.0
+
+# Visualization
+matplotlib>=3.4.0
+seaborn>=0.11.0
+
+# Interactive widgets (for Jupyter)
+ipywidgets>=7.6.0
+
+# Jupyter notebook support
+notebook>=6.4.0
+ipython>=7.25.0
+
+# Testing (optional)
+pytest>=7.0.0
