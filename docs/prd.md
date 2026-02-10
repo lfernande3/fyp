@@ -1,12 +1,8 @@
 # Product Requirements Document (PRD) for M2M Sleep-Based Simulator
 
 **Project Title:** Sleep-Based Low-Latency Access for Machine-to-Machine Communications  
-**Author:** Lance Saquilabon (Student ID: 57848673, Programme-Major: INFE)  
-**Supervisor:** Prof. DAI Lin  
-**Assessor:** Prof. SUNG Albert C W  
 **Version:** 2.0  
 **Date:** February 10, 2026  
-**Location Context:** Hong Kong (aligned with City University of Hong Kong project)  
 
 ## 1. Overview & Purpose
 
@@ -17,7 +13,7 @@ To set up a discrete-event simulation framework for sleep-based random access sc
 The simulator addresses the challenge of understanding and optimizing sleep-aware access schemes to meet stringent latency requirements under energy constraints and massive access, which analytical models alone cannot easily show through stochastic variability, visual traces of node states over time, sensitivity to realistic power models, and edge cases.
 
 ### Intended Audience
-Primarily professors, including the supervisor (Prof. DAI Lin) and assessor (Prof. SUNG Albert C W), for evaluating FYP progress and results. Secondary audiences may include other researchers or students in IoT/M2M communications.
+Primarily professors and assessors for evaluating FYP progress and results. Secondary audiences may include other researchers or students in IoT/M2M communications.
 
 ### Scope Level
 Undecided (prototype for FYP demonstration, with potential for reusable tool).

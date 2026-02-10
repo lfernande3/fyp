@@ -1,8 +1,6 @@
 # FYP Progress Summary
 
 **Project:** Sleep-Based Low-Latency Access for M2M Communications  
-**Student:** Lance Saquilabon (ID: 57848673)  
-**Supervisor:** Prof. DAI Lin  
 **Last Updated:** February 10, 2026
 
 ---

@@ -1,7 +1,6 @@
 """
 Standalone script to run validation and sanity checks.
 
-Author: Lance Saquilabon
 Date: February 10, 2026
 """
 
@@ -32,12 +31,16 @@ print(f"   Error: {sanity_results['no_sleep_check']['p_error']*100:.2f}%")
 print(f"   Status: {'PASS' if sanity_results['no_sleep_check']['passed'] else 'FAIL'}")
 
 # Immediate sleep check
-print("\n2. Immediate Sleep Increases Delay:")
+print("\n2. Immediate Sleep Increases Sleep/Wakeup Activity:")
 print(f"   Normal delay: {sanity_results['immediate_sleep_check']['normal_delay']:.2f} slots")
 print(f"   Immediate delay: {sanity_results['immediate_sleep_check']['immediate_delay']:.2f} slots")
-print(f"   Delay increase: {sanity_results['immediate_sleep_check']['delay_increase']:.2f} slots")
+print(f"   Delay change: {sanity_results['immediate_sleep_check']['delay_change']:.2f} slots")
 print(f"   Normal sleep fraction: {sanity_results['immediate_sleep_check']['normal_sleep_fraction']:.4f}")
 print(f"   Immediate sleep fraction: {sanity_results['immediate_sleep_check']['immediate_sleep_fraction']:.4f}")
+print(f"   Normal wakeup fraction: {sanity_results['immediate_sleep_check']['normal_wakeup_fraction']:.4f}")
+print(f"   Immediate wakeup fraction: {sanity_results['immediate_sleep_check']['immediate_wakeup_fraction']:.4f}")
+print(f"   Sleep increased: {sanity_results['immediate_sleep_check']['sleep_increased']}")
+print(f"   Wakeup increased: {sanity_results['immediate_sleep_check']['wakeup_increased']}")
 print(f"   Status: {'PASS' if sanity_results['immediate_sleep_check']['passed'] else 'FAIL'}")
 
 # High q check

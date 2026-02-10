@@ -1,9 +1,6 @@
 # Tasks.md for Sleep-Based Low-Latency Access for M2M Communications Simulator
 
 **Project Title:** Sleep-Based Low-Latency Access for Machine-to-Machine Communications  
-**Student:** Lance Saquilabon (ID: 57848673, Programme-Major: INFE)  
-**Supervisor:** Prof. DAI Lin  
-**Assessor:** Prof. SUNG Albert C W  
 **Version:** 1.0  
 **Date:** February 10, 2026  
 **Purpose:** This document outlines detailed tasks, subtasks, dependencies, and milestones for implementing the discrete-event simulator as per the PRD.md and FYP Progress Report. Tasks are aligned with objectives O1-O4 from the Progress Report PDF. Focus is on unsaturated regimes, on-demand sleep with slotted Aloha baseline, and demonstrating lifetime-delay tradeoffs. Dates are updated to reflect current progress (as of Feb 2026) and extend from the original 2025 planning chart.

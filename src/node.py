@@ -4,8 +4,6 @@ MTD (Machine-Type Device) Node Implementation for Sleep-Based Random Access Simu
 This module implements the Node class representing individual MTD devices in the 
 sleep-based low-latency access simulation for M2M communications.
 
-Author: Lance Saquilabon (ID: 57848673)
-Project: Sleep-Based Low-Latency Access for Machine-to-Machine Communications
 Date: February 10, 2026
 """
 

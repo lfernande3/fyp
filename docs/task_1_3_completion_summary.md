@@ -3,8 +3,6 @@
 **Task:** Integrate Power Model  
 **Completed:** February 10, 2026  
 **Status:** ✓ COMPLETE  
-**Student:** Lance Saquilabon (ID: 57848673)
-
 ---
 
 ## Overview
@@ -340,7 +338,6 @@ The power model significantly enhances the simulator's realism and enables meani
 
 ---
 
-**Completed by:** Lance Saquilabon  
 **Date:** February 10, 2026  
 **Next Task:** 1.4 - Basic Testing & Debugging  
 **Overall Progress:** Objective O1 at 90% (baseline simulator with realistic power model complete)

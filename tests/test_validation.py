@@ -7,7 +7,6 @@ Tests verify correct implementation of:
 - Sanity checks
 - Small-scale integration tests
 
-Author: Lance Saquilabon
 Date: February 10, 2026
 """
 

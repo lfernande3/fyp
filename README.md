@@ -1,10 +1,19 @@
 # Sleep-Based Low-Latency Access for M2M Communications Simulator
 
-**Author:** Lance Saquilabon (Student ID: 57848673, Programme-Major: INFE)  
-**Supervisor:** Prof. DAI Lin  
-**Assessor:** Prof. SUNG Albert C W  
-**Institution:** City University of Hong Kong  
 **Date:** February 10, 2026
+
+## Getting started (after cloning)
+
+1. **Install dependencies** (from the repo root):
+   ```bash
+   pip install -r requirements.txt
+   ```
+2. **Run notebooks**: Open any notebook in `examples/` (e.g. in Jupyter or VS Code). The first cell adds the project root to `sys.path` so `from src...` works whether the kernel’s working directory is the repo root or `examples/`.
+3. **Run tests** (from repo root):
+   ```bash
+   pytest tests/
+   ```
+   Or run the validation script: `python run_validation.py`
 
 ## Overview
 
@@ -289,11 +298,11 @@ for q, results in sweep_results.items():
 
 - Wang et al. (2024): Sleep-Based Low-Latency Access for M2M Communications
 - 3GPP specifications for mMTC (RA-SDT, MICO mode, T3324 timer)
-- FYP Progress Report (Lance Saquilabon, 2026)
+- FYP Progress Report (2026)
 
 ## License
 
-Academic project for Final Year Project at City University of Hong Kong.
+Academic project for Final Year Project.
 
 ---
 

@@ -3,8 +3,6 @@
 **Task:** Basic Testing & Debugging  
 **Completed:** February 10, 2026  
 **Status:** ✓ COMPLETE  
-**Student:** Lance Saquilabon (ID: 57848673)
-
 ---
 
 ## Overview
@@ -350,7 +348,6 @@ Task 1.4 is **fully complete** with:
 
 ---
 
-**Completed by:** Lance Saquilabon  
 **Date:** February 10, 2026  
 **Next Objective:** O2 - Parameter Impact Quantification  
 **Overall Progress:** Objective O1 complete, ahead of schedule by 18 days!

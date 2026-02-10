@@ -4,8 +4,6 @@ Discrete-Event Simulator for Sleep-Based Random Access
 This module implements the Simulator class that manages multiple MTD nodes,
 runs slotted time loops, detects collisions, and supports batch parameter sweeps.
 
-Author: Lance Saquilabon (ID: 57848673)
-Project: Sleep-Based Low-Latency Access for Machine-to-Machine Communications
 Date: February 10, 2026
 """
 
@@ -114,6 +112,7 @@ class Simulator:
         self.total_collisions = 0
         self.total_transmissions = 0
         self.total_successes = 0
+        self.slots_with_transmissions = 0  # Track slots where at least one node transmitted
         
         # Time series tracking (optional, can be large)
         self.track_history = False
@@ -200,6 +199,8 @@ class Simulator:
             
             # Update statistics
             self.total_transmissions += n_transmitting
+            if n_transmitting > 0:
+                self.slots_with_transmissions += 1
             if collision:
                 self.total_collisions += 1
             if success:
@@ -266,22 +267,47 @@ class Simulator:
         
         # Compute aggregate statistics
         
-        # Lifetime (slots until depletion or end of simulation)
-        lifetimes = []
-        for node in self.nodes:
-            if node.is_depleted():
-                # Find when it depleted (approximate from energy)
-                # For now, use total_slots as upper bound
-                lifetimes.append(total_slots)
-            else:
-                lifetimes.append(total_slots)
-        mean_lifetime_slots = np.mean(lifetimes)
-        
-        # Convert to years (assuming 6ms per slot)
+        # Lifetime estimation based on energy consumption rate
+        # Calculate mean energy consumed per slot across all nodes
         slot_duration_ms = 6.0
         slot_duration_s = slot_duration_ms / 1000.0
         seconds_per_year = 365.25 * 24 * 3600
-        mean_lifetime_years = (mean_lifetime_slots * slot_duration_s) / seconds_per_year
+        
+        # Calculate projected lifetime for each node based on energy consumption rate
+        lifetimes_years = []
+        for node in self.nodes:
+            if node.is_depleted():
+                # Node depleted during simulation
+                # Find approximate depletion slot based on energy consumed
+                energy_consumed = node.initial_energy - node.energy
+                if energy_consumed > 0:
+                    # Estimate when it depleted
+                    energy_per_slot = energy_consumed / total_slots
+                    depletion_slot = node.initial_energy / energy_per_slot
+                    lifetime_seconds = depletion_slot * slot_duration_s
+                    lifetimes_years.append(lifetime_seconds / seconds_per_year)
+                else:
+                    lifetimes_years.append(0.0)
+            else:
+                # Node still has energy - project remaining lifetime
+                energy_consumed = node.initial_energy - node.energy
+                if energy_consumed > 0 and total_slots > 0:
+                    energy_per_slot = energy_consumed / total_slots
+                    total_lifetime_slots = node.initial_energy / energy_per_slot
+                    lifetime_seconds = total_lifetime_slots * slot_duration_s
+                    lifetimes_years.append(lifetime_seconds / seconds_per_year)
+                else:
+                    # No energy consumed - infinite lifetime or just started
+                    lifetimes_years.append(float('inf'))
+        
+        # Filter out infinite lifetimes for mean calculation
+        finite_lifetimes = [lt for lt in lifetimes_years if lt != float('inf')]
+        if len(finite_lifetimes) > 0:
+            mean_lifetime_years = np.mean(finite_lifetimes)
+            mean_lifetime_slots = mean_lifetime_years * seconds_per_year / slot_duration_s
+        else:
+            mean_lifetime_years = float('inf')
+            mean_lifetime_slots = float('inf')
         
         # Delay statistics
         all_delays = []
@@ -332,10 +358,9 @@ class Simulator:
         total_deliveries = sum(node.packets_delivered for node in self.nodes)
         
         # Empirical performance metrics
-        empirical_success_prob = (
-            self.total_successes / self.total_transmissions 
-            if self.total_transmissions > 0 else 0.0
-        )
+        # Success probability: fraction of all slots where exactly one node transmitted
+        # This matches the analytical formula: P(exactly 1 transmits in a slot)
+        empirical_success_prob = self.total_successes / total_slots if total_slots > 0 else 0.0
         
         # Empirical service rate (throughput / avg_queue_length if queue > 0)
         # More accurately: successful_transmissions / (active_slots * n_nodes)

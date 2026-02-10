@@ -8,7 +8,6 @@ Tests verify correct implementation of:
 - Energy consumption
 - Statistics tracking
 
-Author: Lance Saquilabon
 Date: February 10, 2026
 """
 

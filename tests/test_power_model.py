@@ -8,7 +8,6 @@ Tests verify correct implementation of:
 - Lifetime estimations
 - Custom profile creation
 
-Author: Lance Saquilabon
 Date: February 10, 2026
 """
 

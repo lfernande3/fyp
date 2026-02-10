@@ -9,7 +9,6 @@ Tests verify correct implementation of:
 - Parameter sweeps
 - Results aggregation
 
-Author: Lance Saquilabon
 Date: February 10, 2026
 """
 

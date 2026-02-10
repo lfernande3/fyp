@@ -10,8 +10,6 @@ References:
 - 3GPP TS 36.321: E-UTRA MAC protocol specification
 - 3GPP TS 24.501: Non-Access-Stratum (NAS) protocol (MICO mode, T3324 timer)
 
-Author: Lance Saquilabon (ID: 57848673)
-Project: Sleep-Based Low-Latency Access for Machine-to-Machine Communications
 Date: February 10, 2026
 """
 

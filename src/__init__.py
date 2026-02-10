@@ -4,8 +4,6 @@ Sleep-Based Low-Latency Access for M2M Communications Simulator
 A discrete-event simulation framework for sleep-based random access schemes
 using slotted Aloha with on-demand sleep.
 
-Author: Lance Saquilabon (ID: 57848673)
-Supervisor: Prof. DAI Lin
 Date: February 10, 2026
 """
 
