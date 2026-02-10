@@ -533,10 +533,34 @@ class BatchSimulator:
                 # Print summary statistics
                 mean_delays = [r.mean_delay for r in results]
                 mean_lifetimes = [r.mean_lifetime_years for r in results]
+                lt_mean, lt_std = np.mean(mean_lifetimes), np.std(mean_lifetimes)
                 print(f"  Mean delay: {np.mean(mean_delays):.2f} ± {np.std(mean_delays):.2f} slots")
-                print(f"  Mean lifetime: {np.mean(mean_lifetimes):.4f} ± {np.std(mean_lifetimes):.4f} years")
+                print(f"  Mean lifetime: {BatchSimulator.format_lifetime(lt_mean, lt_std)}")
         
         return sweep_results
+    
+    @staticmethod
+    def format_lifetime(mean_years: float, std_years: float) -> str:
+        """
+        Format lifetime for display using a human-readable unit (hours, days, or years).
+        Use hours when < 1 day, days when < 0.01 years (~3.65 days), else years.
+        """
+        if mean_years == float('inf'):
+            return "inf"
+        if mean_years <= 0 or (mean_years != mean_years):  # 0 or NaN
+            return "N/A"
+        one_day_years = 1.0 / 365.25
+        if mean_years < one_day_years:
+            # Show in hours
+            mean_h = mean_years * 365.25 * 24
+            std_h = std_years * 365.25 * 24
+            return f"{mean_h:.2f} ± {std_h:.2f} hours"
+        if mean_years < 0.01:
+            # Show in days
+            mean_d = mean_years * 365.25
+            std_d = std_years * 365.25
+            return f"{mean_d:.2f} ± {std_d:.2f} days"
+        return f"{mean_years:.4f} ± {std_years:.4f} years"
     
     @staticmethod
     def aggregate_results(results: List[SimulationResults]) -> Dict[str, Tuple[float, float]]:
