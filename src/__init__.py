@@ -16,6 +16,12 @@ from .validation import (
     SanityChecker, 
     run_small_scale_test
 )
+from .metrics import (
+    MetricsCalculator,
+    AnalyticalMetrics,
+    ComparisonMetrics,
+    analyze_batch_results
+)
 
 __version__ = '1.0.0'
 __all__ = [
@@ -31,5 +37,9 @@ __all__ = [
     'TraceLogger',
     'AnalyticalValidator',
     'SanityChecker',
-    'run_small_scale_test'
+    'run_small_scale_test',
+    'MetricsCalculator',
+    'AnalyticalMetrics',
+    'ComparisonMetrics',
+    'analyze_batch_results'
 ]

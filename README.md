@@ -155,6 +155,55 @@ The Validation module provides comprehensive testing and debugging utilities:
 - Comprehensive validation suite
 - Standalone validation script
 
+### ✅ Completed: Task 2.1 - Metrics Calculation (Feb 10, 2026)
+
+The Metrics module provides comprehensive analytical and empirical metrics calculation:
+
+**Key Features:**
+- ✓ Analytical formulas from paper (p, μ, ¯T, ¯L)
+- ✓ Empirical metrics from simulation results
+- ✓ Comparison framework for validation
+- ✓ Batch analysis with confidence intervals
+- ✓ Energy efficiency analysis
+- ✓ Queue statistics and time series
+
+**Analytical Metrics:**
+1. **Success Probability**: p = q(1-q)^(n-1)
+2. **Optimal q**: q_opt = 1/n
+3. **Service Rate**: μ = p / (1 + tw * λ / (1-λ)) with sleep
+4. **Mean Delay**: ¯T = 1/(μ - λ) from M/M/1 theory
+5. **Mean Queue Length**: ¯L = λ/(μ - λ) from Little's Law
+
+**Empirical Metrics:**
+- **Lifetime**: Slots, years, days, hours estimation
+- **Delay**: Mean, 95th/99th percentile, access delay
+- **Energy**: Per packet, per slot, breakdown by state
+- **Network**: Throughput, delivery ratio, collision rate
+- **Queue**: Mean, max, std, median, percentiles
+
+**Comparison Features:**
+- Relative error calculation
+- Stability condition checking (λ < μ)
+- Warning system for invalid comparisons
+- Formatted metrics summary output
+
+**Usage:**
+```python
+from src.metrics import MetricsCalculator
+
+# Compute all metrics from simulation result
+metrics = MetricsCalculator.compute_comprehensive_metrics(
+    result, include_analytical=True
+)
+
+# Print formatted summary
+MetricsCalculator.print_metrics_summary(metrics)
+
+# Batch analysis
+from src.metrics import analyze_batch_results
+aggregated = analyze_batch_results(batch_results)
+```
+
 ## Project Structure
 
 ```
@@ -163,19 +212,32 @@ fyp/
 │   ├── prd.md                          # Product Requirements Document
 │   ├── task.md                         # Task breakdown (updated)
 │   ├── task_1_1_completion_summary.md  # Task 1.1 completion report
-│   └── task_1_2_completion_summary.md  # Task 1.2 completion report
+│   ├── task_1_2_completion_summary.md  # Task 1.2 completion report
+│   ├── task_1_3_completion_summary.md  # Task 1.3 completion report
+│   ├── task_1_4_completion_summary.md  # Task 1.4 completion report
+│   └── task_2_1_completion_summary.md  # Task 2.1 completion report
 ├── src/
 │   ├── __init__.py      # Package initialization
 │   ├── node.py          # MTD Node class (510 lines)
-│   └── simulator.py     # Simulator classes (650+ lines)
+│   ├── simulator.py     # Simulator classes (650+ lines)
+│   ├── power_model.py   # Power models (320+ lines)
+│   ├── validation.py    # Validation utilities (380+ lines)
+│   └── metrics.py       # Metrics calculation (600+ lines) ✨ NEW
 ├── tests/
 │   ├── __init__.py
-│   ├── test_node.py     # Unit tests for Node (8 tests)
-│   └── test_simulator.py # Unit tests for Simulator (10 tests)
+│   ├── test_node.py         # Unit tests for Node (8 tests)
+│   ├── test_simulator.py    # Unit tests for Simulator (10 tests)
+│   ├── test_power_model.py  # Unit tests for PowerModel (11 tests)
+│   ├── test_validation.py   # Unit tests for Validation (7 tests)
+│   └── test_metrics.py      # Unit tests for Metrics (33 tests) ✨ NEW
 ├── examples/
-│   ├── node_demo.ipynb      # Node class demo
-│   └── simulator_demo.ipynb # Simulator demo with visualizations
+│   ├── _path_setup.py           # Path configuration for notebooks
+│   ├── node_demo.ipynb          # Node class demo
+│   ├── simulator_demo.ipynb     # Simulator demo with visualizations
+│   ├── power_model_demo.ipynb   # Power model examples
+│   └── metrics_demo.ipynb       # Metrics analysis demo ✨ NEW
 ├── requirements.txt     # Python dependencies
+├── run_validation.py    # Standalone validation script
 └── README.md           # This file
 ```
 
@@ -196,23 +258,28 @@ pip install -r requirements.txt
 Run the unit tests to verify implementations:
 
 ```bash
-# Test Node class (8 tests)
-python tests/test_node.py
+# Run all tests (69 tests total)
+pytest tests/
 
-# Test Simulator class (10 tests)
-python tests/test_simulator.py
+# Or run specific test modules
+pytest tests/test_node.py          # Node tests (8 tests)
+pytest tests/test_simulator.py     # Simulator tests (10 tests)
+pytest tests/test_power_model.py   # Power model tests (11 tests)
+pytest tests/test_validation.py    # Validation tests (7 tests)
+pytest tests/test_metrics.py       # Metrics tests (33 tests)
+
+# Run validation script
+python run_validation.py
 ```
 
-**Node Tests:**
-- Initialization, packet arrival, state transitions
-- Energy consumption, transmission attempts
-- Delay calculation, statistics, depletion
+**Test Coverage:**
+- **Node (8 tests)**: Initialization, packet arrival, state transitions, energy consumption, transmission attempts, delay calculation, statistics, depletion
+- **Simulator (10 tests)**: Initialization, collision detection, simulation run, reproducibility, energy depletion, history tracking, batch replications, parameter sweeps, aggregation, transmission probability impact
+- **Power Model (11 tests)**: Power profiles, battery configs, lifetime estimation, energy conversions, realistic values, custom profiles
+- **Validation (7 tests)**: Analytical validation, trace logging, sanity checks, small-scale integration
+- **Metrics (33 tests)**: Analytical formulas, empirical metrics, comparisons, batch analysis, queue statistics, edge cases
 
-**Simulator Tests:**
-- Initialization, collision detection, simulation run
-- Reproducibility, energy depletion, history tracking
-- Batch replications, parameter sweeps, aggregation
-- Transmission probability impact
+**Total: 69 tests, all passing ✅**
 
 ## Usage Example
 

@@ -197,13 +197,13 @@ def test_immediate_sleep_sanity_check():
     assert 'passed' in result
     assert 'normal_delay' in result
     assert 'immediate_delay' in result
-    assert 'delay_increase' in result
+    assert 'delay_change' in result  # Fixed: was 'delay_increase'
     
     # Check that test ran successfully (don't require strict delay increase with low traffic)
     # The important check is sleep fraction increased
     print(f"  Normal delay: {result['normal_delay']:.2f}")
     print(f"  Immediate delay: {result['immediate_delay']:.2f}")
-    print(f"  Delay increase: {result['delay_increase']:.2f}")
+    print(f"  Delay change: {result['delay_change']:.2f}")
     print(f"  Normal sleep: {result['normal_sleep_fraction']:.4f}")
     print(f"  Immediate sleep: {result['immediate_sleep_fraction']:.4f}")
     print(f"  Check passed: {result['passed']}")

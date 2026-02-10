@@ -86,16 +86,24 @@
   Critical: Yes.  
 
 ### Objective O2: Quantify impact of key parameters (ts, tw, q, λ, n, traffic models) via simulation.
-**Status:** 15% achieved.  
+**Status:** 40% achieved.  
 **Milestone:** Trade-off curves and parameter impact plots by mid-Mar 2026.  
 **Dependencies:** O1 baseline (Task 1).  
+**Progress Update (Feb 10, 2026):** Task 2.1 COMPLETE - Comprehensive metrics module with analytical formulas, empirical calculations, and validation framework.
 
-- **Task 2.1: Implement Metrics Calculation**  
+- **Task 2.1: Implement Metrics Calculation** ✓ COMPLETED (Feb 10, 2026)
   Description: Compute all required metrics post-simulation.  
   Subtasks:  
-  - Average lifetime, mean/tail queueing delay ¯T, throughput, queue length time-series, state fractions, energy breakdown, empirical p/μ.  
-  - Compare to paper: e.g., p = q(1-q)^{n-1}, μ = p / (1 + tw * λ / (1-λ) if sleep).  
+  - Average lifetime, mean/tail queueing delay ¯T, throughput, queue length time-series, state fractions, energy breakdown, empirical p/μ. ✓  
+  - Compare to paper: e.g., p = q(1-q)^{n-1}, μ = p / (1 + tw * λ / (1-λ) if sleep). ✓  
+  - Implemented MetricsCalculator with analytical formulas (p, μ, ¯T, ¯L) ✓  
+  - Created comprehensive empirical metrics (energy, latency, network performance) ✓  
+  - Built comparison framework for validation ✓  
+  - Added batch analysis utilities with confidence intervals ✓  
+  - Comprehensive test suite with 33 tests (all passing) ✓  
+  - Demo notebook with visualizations and parameter sweeps ✓  
   Estimated Effort: 5-7 hours.  
+  Actual Effort: ~6 hours.  
   Deadline: Mar 5, 2026.  
   Critical: Yes.  
 
