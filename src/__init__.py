@@ -22,6 +22,24 @@ from .metrics import (
     ComparisonMetrics,
     analyze_batch_results
 )
+from .experiments import (
+    ParameterSweep,
+    ScenarioExperiments,
+    SweepConfig,
+    ScenarioConfig
+)
+from .traffic_models import (
+    TrafficGenerator,
+    TrafficModel,
+    BurstyTrafficConfig
+)
+from .visualizations import (
+    SimulationVisualizer,
+    InteractiveVisualizer,
+    PlotConfig,
+    plot_parameter_sweep_summary,
+    save_figure
+)
 
 __version__ = '1.0.0'
 __all__ = [
@@ -41,5 +59,17 @@ __all__ = [
     'MetricsCalculator',
     'AnalyticalMetrics',
     'ComparisonMetrics',
-    'analyze_batch_results'
+    'analyze_batch_results',
+    'ParameterSweep',
+    'ScenarioExperiments',
+    'SweepConfig',
+    'ScenarioConfig',
+    'TrafficGenerator',
+    'TrafficModel',
+    'BurstyTrafficConfig',
+    'SimulationVisualizer',
+    'InteractiveVisualizer',
+    'PlotConfig',
+    'plot_parameter_sweep_summary',
+    'save_figure'
 ]

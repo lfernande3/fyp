@@ -204,6 +204,116 @@ from src.metrics import analyze_batch_results
 aggregated = analyze_batch_results(batch_results)
 ```
 
+### ✅ Completed: Task 2.2 - Parameter Sweep Experiments (Feb 10, 2026)
+
+The Experiments and Traffic Models modules provide systematic parameter exploration:
+
+**Key Features:**
+- ✓ Systematic parameter sweeps (q, ts, n, λ)
+- ✓ Multiple traffic models (Poisson, Bursty, Periodic, On-off)
+- ✓ Scenario comparisons (Low-latency vs Battery-life)
+- ✓ Trade-off quantification
+- ✓ Design guidelines generation
+
+**Parameter Sweeps:**
+1. **Transmission Probability (q)**: 0.01-0.5, shows delay-energy trade-off
+2. **Idle Timer (ts)**: 1-100, shows sleep overhead impact
+3. **Number of Nodes (n)**: 10-500, tests scalability
+4. **Arrival Rate (λ)**: 0.001-0.1, validates stability
+
+**Traffic Models:**
+- **Poisson**: Default Bernoulli arrivals
+- **Bursty**: Batch arrivals with configurable burst size
+- **Periodic**: Regular intervals with optional jitter
+- **On-off**: Alternating active/idle periods
+
+**Scenarios:**
+- **Low-Latency**: ts=1, q=1/n → ~18 slots delay, ~7h lifetime
+- **Balanced**: ts=10, q=0.05 → ~25 slots delay, ~10h lifetime
+- **Battery-Life**: ts=50, q=0.02 → ~35 slots delay, ~13h lifetime
+
+**Key Findings:**
+- Optimal q ≈ 1/n for maximum throughput
+- 50% lifetime increase costs ~30% delay increase
+- Battery-priority achieves 1.9x longer lifetime vs low-latency
+- Bursty traffic has 3x higher variability than Poisson
+
+**Usage:**
+```python
+from src.experiments import ParameterSweep, ScenarioExperiments
+
+# Parameter sweep
+q_results = ParameterSweep.sweep_transmission_prob(
+    config, q_values=[0.01, 0.05, 0.1], n_replications=20
+)
+
+# Scenario comparison
+scenarios = [
+    ScenarioExperiments.create_low_latency_scenario(),
+    ScenarioExperiments.create_battery_life_scenario()
+]
+results = ScenarioExperiments.compare_scenarios(scenarios)
+```
+
+### ✅ Completed: Task 2.3 - Visualization Integration (Feb 10, 2026)
+
+The Visualizations module provides comprehensive plotting and interactive exploration:
+
+**Key Features:**
+- ✓ 10+ plot types for complete analysis
+- ✓ Publication-quality output (PNG, PDF)
+- ✓ Interactive parameter exploration (ipywidgets)
+- ✓ Customizable styling and themes
+- ✓ Confidence interval visualization
+- ✓ Multi-panel dashboard layouts
+
+**Plot Types:**
+1. **Lifetime vs. Delay Scatter** - KEY TRADE-OFF visualization
+2. **Lifetime vs. Parameter Curves** - with 95% CI
+3. **Delay vs. Parameter Curves** - mean, 95th, 99th percentiles
+4. **Queue Evolution** - time series analysis
+5. **Energy Breakdown Pies** - consumption by state
+6. **State Occupation Pies** - time in each state
+7. **Energy Depletion Curves** - battery drainage
+8. **Trade-off Comparisons** - scenario analysis
+9. **Summary Dashboards** - 6-panel overviews
+10. **Parameter Sweep Summaries** - automated comprehensive analysis
+
+**Interactive Features:**
+- Real-time sliders for q, ts, n parameters
+- Live plot updates with immediate visual feedback
+- Configurable metrics display
+- Great for demonstrations and parameter tuning
+
+**Usage:**
+```python
+from src import SimulationVisualizer, plot_parameter_sweep_summary
+
+# Create visualizer
+viz = SimulationVisualizer()
+
+# Single result plots
+viz.plot_energy_breakdown_pie(result)
+viz.plot_queue_evolution(result)
+
+# Parameter sweep visualization
+q_results = ParameterSweep.sweep_transmission_prob(config)
+viz.plot_lifetime_vs_delay_scatter(q_results, param_name="q")
+
+# Comprehensive summary
+fig = plot_parameter_sweep_summary(q_results, "q")
+
+# Interactive exploration
+from src import InteractiveVisualizer
+interactive_viz = InteractiveVisualizer(config)
+interactive_viz.create_interactive_explorer()
+```
+
+**Objective O2: 100% COMPLETE ✓**
+- Task 2.1: Metrics Calculation ✓
+- Task 2.2: Parameter Sweep Experiments ✓
+- Task 2.3: Visualization Integration ✓
+
 ## Project Structure
 
 ```
@@ -215,29 +325,42 @@ fyp/
 │   ├── task_1_2_completion_summary.md  # Task 1.2 completion report
 │   ├── task_1_3_completion_summary.md  # Task 1.3 completion report
 │   ├── task_1_4_completion_summary.md  # Task 1.4 completion report
-│   └── task_2_1_completion_summary.md  # Task 2.1 completion report
+│   ├── task_2_1_completion_summary.md  # Task 2.1 completion report
+│   ├── task_2_2_completion_summary.md  # Task 2.2 completion report
+│   └── task_2_3_completion_summary.md  # Task 2.3 completion report ✨ NEW
 ├── src/
-│   ├── __init__.py      # Package initialization
-│   ├── node.py          # MTD Node class (510 lines)
-│   ├── simulator.py     # Simulator classes (650+ lines)
-│   ├── power_model.py   # Power models (320+ lines)
-│   ├── validation.py    # Validation utilities (380+ lines)
-│   └── metrics.py       # Metrics calculation (600+ lines) ✨ NEW
+│   ├── __init__.py         # Package initialization
+│   ├── node.py             # MTD Node class (510 lines)
+│   ├── simulator.py        # Simulator classes (650+ lines)
+│   ├── power_model.py      # Power models (320+ lines)
+│   ├── validation.py       # Validation utilities (380+ lines)
+│   ├── metrics.py          # Metrics calculation (600+ lines)
+│   ├── experiments.py      # Parameter sweeps & scenarios (580+ lines)
+│   ├── traffic_models.py   # Traffic generators (340+ lines)
+│   └── visualizations.py   # Visualization utilities (820+ lines) ✨ NEW
 ├── tests/
 │   ├── __init__.py
-│   ├── test_node.py         # Unit tests for Node (8 tests)
-│   ├── test_simulator.py    # Unit tests for Simulator (10 tests)
-│   ├── test_power_model.py  # Unit tests for PowerModel (11 tests)
-│   ├── test_validation.py   # Unit tests for Validation (7 tests)
-│   └── test_metrics.py      # Unit tests for Metrics (33 tests) ✨ NEW
+│   ├── test_node.py            # Unit tests for Node (8 tests)
+│   ├── test_simulator.py       # Unit tests for Simulator (10 tests)
+│   ├── test_power_model.py     # Unit tests for PowerModel (11 tests)
+│   ├── test_validation.py      # Unit tests for Validation (7 tests)
+│   ├── test_metrics.py         # Unit tests for Metrics (33 tests)
+│   ├── test_experiments.py     # Unit tests for Experiments (13 tests)
+│   ├── test_traffic_models.py  # Unit tests for Traffic (16 tests)
+│   └── test_visualizations.py  # Unit tests for Visualizations (37 tests) ✨ NEW
 ├── examples/
-│   ├── _path_setup.py           # Path configuration for notebooks
-│   ├── node_demo.ipynb          # Node class demo
-│   ├── simulator_demo.ipynb     # Simulator demo with visualizations
-│   ├── power_model_demo.ipynb   # Power model examples
-│   └── metrics_demo.ipynb       # Metrics analysis demo ✨ NEW
+│   ├── _path_setup.py              # Path configuration for notebooks
+│   ├── node_demo.ipynb             # Node class demo
+│   ├── simulator_demo.ipynb        # Simulator demo with visualizations
+│   ├── power_model_demo.ipynb      # Power model examples
+│   ├── metrics_demo.ipynb          # Metrics analysis demo
+│   ├── parameter_sweep_demo.ipynb  # Parameter sweeps & scenarios
+│   └── visualizations_demo.ipynb   # Complete visualization guide ✨ NEW
 ├── requirements.txt     # Python dependencies
 ├── run_validation.py    # Standalone validation script
+├── TASK_2_1_SUMMARY.md  # Task 2.1 quick summary
+├── TASK_2_2_SUMMARY.md  # Task 2.2 quick summary
+├── TASK_2_3_SUMMARY.md  # Task 2.3 quick summary ✨ NEW
 └── README.md           # This file
 ```
 
@@ -258,15 +381,18 @@ pip install -r requirements.txt
 Run the unit tests to verify implementations:
 
 ```bash
-# Run all tests (69 tests total)
+# Run all tests (135 tests total)
 pytest tests/
 
 # Or run specific test modules
-pytest tests/test_node.py          # Node tests (8 tests)
-pytest tests/test_simulator.py     # Simulator tests (10 tests)
-pytest tests/test_power_model.py   # Power model tests (11 tests)
-pytest tests/test_validation.py    # Validation tests (7 tests)
-pytest tests/test_metrics.py       # Metrics tests (33 tests)
+pytest tests/test_node.py            # Node tests (8 tests)
+pytest tests/test_simulator.py       # Simulator tests (10 tests)
+pytest tests/test_power_model.py     # Power model tests (11 tests)
+pytest tests/test_validation.py      # Validation tests (7 tests)
+pytest tests/test_metrics.py         # Metrics tests (33 tests)
+pytest tests/test_experiments.py     # Experiments tests (13 tests)
+pytest tests/test_traffic_models.py  # Traffic models tests (16 tests)
+pytest tests/test_visualizations.py  # Visualizations tests (37 tests) ✨
 
 # Run validation script
 python run_validation.py
@@ -278,8 +404,11 @@ python run_validation.py
 - **Power Model (11 tests)**: Power profiles, battery configs, lifetime estimation, energy conversions, realistic values, custom profiles
 - **Validation (7 tests)**: Analytical validation, trace logging, sanity checks, small-scale integration
 - **Metrics (33 tests)**: Analytical formulas, empirical metrics, comparisons, batch analysis, queue statistics, edge cases
+- **Experiments (13 tests)**: Parameter sweeps (q, ts, n, λ), scenario comparisons, trade-off analysis
+- **Traffic Models (16 tests)**: Poisson, bursty, periodic, on-off generators, trace analysis, edge cases
+- **Visualizations (37 tests)**: All plot types, interactive widgets, custom styling, dashboards, file saving, edge cases ✨
 
-**Total: 69 tests, all passing ✅**
+**Total: 135 tests, all passing ✅**
 
 ## Usage Example
 
