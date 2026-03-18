@@ -204,11 +204,23 @@ class MetricsCalculator:
         lambda_rate: float,
         tw: int,
         ts: int,
-        has_sleep: bool = True
+        has_sleep: bool = True,
+        active_fraction: Optional[float] = None
     ) -> AnalyticalMetrics:
         """
         Compute all analytical metrics based on paper formulas.
-        
+
+        The paper's formula p = q(1-q)^(n-1) assumes all n nodes are always
+        contending (saturated regime).  In the unsaturated regime (the normal
+        operating point), only a fraction α of nodes are active at any time,
+        so the effective contention is lower and the actual per-node service
+        rate is higher than p_full_n.
+
+        Pass ``active_fraction`` (from simulation results) to use
+        effective_n = n * active_fraction, which gives better agreement with
+        empirical service rates in unsaturated operation.  Omit it to use the
+        full-n formula as written in the paper (conservative estimate).
+
         Args:
             n: Number of nodes
             q: Transmission probability
@@ -216,12 +228,20 @@ class MetricsCalculator:
             tw: Wake-up time
             ts: Idle timer (affects whether sleep is used)
             has_sleep: Whether on-demand sleep is enabled
-            
+            active_fraction: Optional fraction of nodes in ACTIVE state from
+                simulation (enables effective_n correction).
+
         Returns:
             AnalyticalMetrics object with all theoretical values
         """
+        # Determine effective number of contending nodes
+        if active_fraction is not None and 0 < active_fraction <= 1:
+            effective_n = max(1, int(round(n * active_fraction)))
+        else:
+            effective_n = n  # use full n per paper convention
+
         # Success probability
-        p = MetricsCalculator.compute_analytical_success_probability(n, q)
+        p = MetricsCalculator.compute_analytical_success_probability(effective_n, q)
         
         # Service rate (depends on sleep)
         mu = MetricsCalculator.compute_analytical_service_rate(
@@ -325,25 +345,41 @@ class MetricsCalculator:
     ) -> ComparisonMetrics:
         """
         Compare empirical simulation results with analytical predictions.
-        
+
+        Definition alignment:
+          - analytical.success_probability = p = q(1-q)^(n-1)  [per-node service rate]
+          - result.empirical_service_rate  ≈ q(1-q)^(n_active-1) [per-node, from sim]
+          - result.empirical_success_prob  = S = successes/slot  [network throughput]
+          - analytical.service_rate        = μ = p/(1+tw*λ/(1-λ)) [per-node, with sleep]
+
+        The success-probability comparison uses empirical_service_rate vs
+        analytical.success_probability so that both sides are per-node quantities.
+        Using empirical_success_prob (throughput) against p (per-node) would
+        introduce a systematic factor-of-n_active discrepancy.
+
         Args:
             result: SimulationResults from simulation
             analytical: AnalyticalMetrics from theory
             tolerance: Acceptable relative error threshold (default 15%)
-            
+
         Returns:
             ComparisonMetrics with comparison results
         """
         warnings_list = []
-        
-        # Compare success probability
+
+        # Compare per-node success probability:
+        # empirical_service_rate ≈ q(1-q)^(n_active-1) vs analytical p = q(1-q)^(n-1).
+        # When sleep is active n_active < n, so empirical will be > analytical p;
+        # this difference is expected and is captured by the μ formula.
         success_prob_error = abs(
-            result.empirical_success_prob - analytical.success_probability
+            result.empirical_service_rate - analytical.success_probability
         ) / max(analytical.success_probability, 1e-10)
-        
+
         if success_prob_error > tolerance:
             warnings_list.append(
-                f"Success probability error {success_prob_error:.2%} exceeds tolerance {tolerance:.2%}"
+                f"Per-node success probability error {success_prob_error:.2%} exceeds tolerance "
+                f"{tolerance:.2%} (empirical_service_rate vs analytical p; "
+                f"note: sleep reduces active nodes so empirical may exceed analytical p)"
             )
         
         # Compare service rate
@@ -383,7 +419,9 @@ class MetricsCalculator:
             )
         
         return ComparisonMetrics(
-            empirical_success_prob=result.empirical_success_prob,
+            # Use empirical_service_rate (per-node) for the success-prob comparison
+            # so that both sides are on the same per-node scale as p = q(1-q)^(n-1).
+            empirical_success_prob=result.empirical_service_rate,
             analytical_success_prob=analytical.success_probability,
             success_prob_error=success_prob_error,
             empirical_service_rate=result.empirical_service_rate,
@@ -564,14 +602,18 @@ class MetricsCalculator:
         # Add analytical comparison if requested
         if include_analytical:
             has_sleep = result.config.idle_timer < float('inf')
-            
+            # Pass active_fraction so analytical metrics use effective_n,
+            # which matches the unsaturated operating regime in the simulation.
+            active_fraction = result.state_fractions.get('active', None)
+
             analytical = MetricsCalculator.compute_analytical_metrics(
                 n=result.config.n_nodes,
                 q=result.config.transmission_prob,
                 lambda_rate=result.config.arrival_rate,
                 tw=result.config.wakeup_time,
                 ts=result.config.idle_timer,
-                has_sleep=has_sleep
+                has_sleep=has_sleep,
+                active_fraction=active_fraction
             )
             
             comparison = MetricsCalculator.compare_empirical_vs_analytical(

@@ -358,17 +358,27 @@ class Simulator:
         total_deliveries = sum(node.packets_delivered for node in self.nodes)
         
         # Empirical performance metrics
-        # Success probability: fraction of all slots where exactly one node transmitted
-        # This matches the analytical formula: P(exactly 1 transmits in a slot)
+        #
+        # NOTE on definitions:
+        #   empirical_success_prob  = total_successes / total_slots
+        #                           = network throughput S (successes per slot).
+        #     This is NOT the same as the per-node success probability p = q(1-q)^(n-1).
+        #     The analytical p is a per-node quantity (service rate), while this is
+        #     a network-level quantity S ≈ n_active * p.
+        #     Comparing them directly inflates errors by a factor of ~n*active_fraction.
+        #
+        #   empirical_service_rate  = total_successes / total_active_node_slots
+        #                           ≈ q*(1-q)^(n_active-1)   (per-node success rate)
+        #     This IS comparable to the analytical p = q(1-q)^(n-1) and to μ.
+        #     Use this field (not empirical_success_prob) when validating against
+        #     the analytical service rate formulas from the paper.
         empirical_success_prob = self.total_successes / total_slots if total_slots > 0 else 0.0
-        
-        # Empirical service rate (throughput / avg_queue_length if queue > 0)
-        # More accurately: successful_transmissions / (active_slots * n_nodes)
+
         total_active_slots = sum(
             node.time_in_state[NodeState.ACTIVE] for node in self.nodes
         )
         empirical_service_rate = (
-            self.total_successes / total_active_slots 
+            self.total_successes / total_active_slots
             if total_active_slots > 0 else 0.0
         )
         

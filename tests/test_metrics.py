@@ -511,5 +511,168 @@ class TestEdgeCases(unittest.TestCase):
         self.assertEqual(queue, float('inf'))
 
 
+class TestEdgeCasesExtended(unittest.TestCase):
+    """Extended edge-case and boundary-condition tests for each analytical formula."""
+
+    # ------------------------------------------------------------------
+    # Success probability: p = q(1-q)^(n-1)
+    # ------------------------------------------------------------------
+
+    def test_success_probability_n1(self):
+        """With a single node (n=1) success probability must equal q exactly."""
+        for q in [0.1, 0.3, 0.5, 0.9]:
+            p = MetricsCalculator.compute_analytical_success_probability(1, q)
+            self.assertAlmostEqual(
+                p, q, places=10,
+                msg=f"n=1, q={q}: expected p=q={q}, got {p}"
+            )
+
+    def test_success_probability_two_nodes(self):
+        """With n=2 the formula reduces to p = q(1-q)."""
+        for q in [0.1, 0.2, 0.5]:
+            p = MetricsCalculator.compute_analytical_success_probability(2, q)
+            expected = q * (1 - q)
+            self.assertAlmostEqual(p, expected, places=10,
+                                   msg=f"n=2, q={q}: expected {expected}, got {p}")
+
+    def test_success_probability_large_n_small(self):
+        """For large n with fixed q, p should approach 0 as n grows."""
+        q = 0.1
+        p_10 = MetricsCalculator.compute_analytical_success_probability(10, q)
+        p_100 = MetricsCalculator.compute_analytical_success_probability(100, q)
+        p_1000 = MetricsCalculator.compute_analytical_success_probability(1000, q)
+        self.assertGreater(p_10, p_100)
+        self.assertGreater(p_100, p_1000)
+
+    def test_success_probability_at_optimal_q(self):
+        """At q = 1/n the analytical p should equal (1/n)*(1 - 1/n)^(n-1)."""
+        for n in [5, 10, 20, 50]:
+            q_opt = 1.0 / n
+            p = MetricsCalculator.compute_analytical_success_probability(n, q_opt)
+            expected = q_opt * ((1 - q_opt) ** (n - 1))
+            self.assertAlmostEqual(p, expected, places=10)
+            # For large n, optimal p approaches 1/e ≈ 0.3679
+            if n >= 20:
+                self.assertAlmostEqual(p * n, 1 / np.e, delta=0.05,
+                                       msg=f"n={n}: n*p should approach 1/e")
+
+    def test_success_probability_symmetry(self):
+        """p(n, q) should be non-negative for all valid inputs."""
+        for n in [1, 2, 5, 100]:
+            for q in [0.0, 0.01, 0.5, 1.0]:
+                p = MetricsCalculator.compute_analytical_success_probability(n, q)
+                self.assertGreaterEqual(p, 0.0)
+                self.assertLessEqual(p, 1.0)
+
+    # ------------------------------------------------------------------
+    # Service rate: mu = p / (1 + tw * lambda / (1 - lambda))
+    # ------------------------------------------------------------------
+
+    def test_service_rate_tw0_equals_p(self):
+        """With tw=0 the service rate must equal p regardless of sleep mode."""
+        p = 0.08
+        lambda_rate = 0.02
+        mu = MetricsCalculator.compute_analytical_service_rate(
+            p, lambda_rate, tw=0, has_sleep=True
+        )
+        self.assertAlmostEqual(mu, p, places=10,
+                               msg="tw=0 should give mu=p")
+
+    def test_service_rate_monotone_decreasing_in_tw(self):
+        """Service rate should strictly decrease as tw increases (sleep overhead)."""
+        p = 0.1
+        lambda_rate = 0.02
+        tw_values = [0, 1, 5, 10, 20]
+        mu_values = [
+            MetricsCalculator.compute_analytical_service_rate(
+                p, lambda_rate, tw, has_sleep=True
+            )
+            for tw in tw_values
+        ]
+        for i in range(len(mu_values) - 1):
+            self.assertGreaterEqual(
+                mu_values[i], mu_values[i + 1],
+                msg=f"mu(tw={tw_values[i]})={mu_values[i]:.6f} should be >= mu(tw={tw_values[i+1]})={mu_values[i+1]:.6f}"
+            )
+
+    def test_service_rate_denominator_formula(self):
+        """Verify the denominator 1 + tw*λ/(1-λ) is computed correctly."""
+        p = 0.1
+        lambda_rate = 0.04
+        tw = 8
+        mu = MetricsCalculator.compute_analytical_service_rate(
+            p, lambda_rate, tw, has_sleep=True
+        )
+        expected_denom = 1 + tw * lambda_rate / (1 - lambda_rate)
+        expected_mu = p / expected_denom
+        self.assertAlmostEqual(mu, expected_mu, places=10)
+
+    def test_service_rate_lambda_saturated(self):
+        """At lambda >= 1.0 the service rate should return 0 (invalid regime)."""
+        mu = MetricsCalculator.compute_analytical_service_rate(
+            0.1, lambda_rate=1.0, tw=5, has_sleep=True
+        )
+        self.assertEqual(mu, 0.0)
+
+    # ------------------------------------------------------------------
+    # Mean delay: T = 1/(mu - lambda)
+    # ------------------------------------------------------------------
+
+    def test_mean_delay_lambda_equals_zero(self):
+        """With no arrivals (λ=0), mean delay should equal 1/μ."""
+        mu = 0.1
+        delay = MetricsCalculator.compute_analytical_mean_delay(
+            lambda_rate=0.0, mu=mu
+        )
+        self.assertAlmostEqual(delay, 1.0 / mu, places=10)
+
+    def test_mean_delay_approaches_infinity_near_stability_boundary(self):
+        """As λ → μ from below, mean delay should grow without bound."""
+        mu = 0.1
+        delays = []
+        for eps in [0.05, 0.01, 0.001, 0.0001]:
+            d = MetricsCalculator.compute_analytical_mean_delay(mu - eps, mu)
+            delays.append(d)
+        # Each successive delay should be strictly larger
+        for i in range(len(delays) - 1):
+            self.assertLess(delays[i], delays[i + 1])
+        # The last value should be very large (> 1000 slots for eps=0.0001)
+        self.assertGreater(delays[-1], 1000)
+
+    def test_mean_delay_equals_lambda_zero_special_case(self):
+        """Manual check: λ=0.05, μ=0.10 → T = 1/(0.10-0.05) = 20.0 slots."""
+        delay = MetricsCalculator.compute_analytical_mean_delay(0.05, 0.10)
+        self.assertAlmostEqual(delay, 20.0, places=6)
+
+    # ------------------------------------------------------------------
+    # Little's Law consistency: L = λ * T
+    # ------------------------------------------------------------------
+
+    def test_littles_law_consistency(self):
+        """Mean queue length L = λ * T must hold (Little's Law)."""
+        lambda_rate = 0.05
+        mu = 0.12
+        T = MetricsCalculator.compute_analytical_mean_delay(lambda_rate, mu)
+        L = MetricsCalculator.compute_analytical_mean_queue_length(lambda_rate, mu)
+        # Little's Law: L = λ * T
+        self.assertAlmostEqual(L, lambda_rate * T, places=10,
+                               msg="Little's Law L = λT must hold")
+
+    def test_queue_length_zero_arrivals(self):
+        """With λ=0, mean queue length should be 0."""
+        L = MetricsCalculator.compute_analytical_mean_queue_length(0.0, mu=0.1)
+        self.assertAlmostEqual(L, 0.0, places=10)
+
+    def test_queue_length_increases_with_lambda(self):
+        """Queue length should increase monotonically as λ increases toward μ."""
+        mu = 0.1
+        prev_L = 0.0
+        for lam in [0.01, 0.03, 0.05, 0.07, 0.09]:
+            L = MetricsCalculator.compute_analytical_mean_queue_length(lam, mu)
+            self.assertGreater(L, prev_L,
+                               msg=f"L should increase: L(λ={lam}) should be > L(λ<{lam})")
+            prev_L = L
+
+
 if __name__ == '__main__':
     unittest.main()

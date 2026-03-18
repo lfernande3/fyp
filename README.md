@@ -469,18 +469,6 @@ for q, results in sweep_results.items():
     print(f"q={q}: delay={mean_delay:.2f}±{std_delay:.2f}")
 ```
 
-## Next Steps
-
-### Upcoming Tasks (from task.md)
-
-- **Task 1.3** (Due Feb 25, 2026): Integrate Power Model
-  - Configurable power consumption with 3GPP-inspired values
-  - Battery lifetime estimation in years
-
-- **Task 1.4** (Due Feb 28, 2026): Basic Testing & Debugging
-  - Small-scale tests for state transitions and collisions
-  - Sanity checks against no-sleep Aloha baseline
-
 ## Key Parameters
 
 - **n**: Number of MTD nodes (100-10,000)
@@ -494,7 +482,6 @@ for q, results in sweep_results.items():
 
 - Wang et al. (2024): Sleep-Based Low-Latency Access for M2M Communications
 - 3GPP specifications for mMTC (RA-SDT, MICO mode, T3324 timer)
-- FYP Progress Report (2026)
 
 ## License
 
@@ -502,7 +489,4 @@ Academic project for Final Year Project.
 
 ---
 
-**Last Updated:** February 10, 2026  
-**Status:** Objective O1 COMPLETE - All 4 Tasks Finished ✓  
-**Progress:** Baseline simulator production-ready with 3GPP power models and validation (100%)  
-**Total Tests:** 36/36 passing ✅
+**Last Updated:** February 10, 2026

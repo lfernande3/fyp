@@ -229,23 +229,33 @@ class AnalyticalValidator:
         """
         validation = {}
         
-        # Success probability
-        # Note: Analytical formula assumes all n nodes are always contending.
-        # With sleep mode, the effective number of contending nodes is lower.
-        # We estimate effective n as: n * fraction_active
+        # Per-node success probability comparison.
+        #
+        # The analytical formula p = q(1-q)^(n-1) assumes all n nodes are always
+        # contending.  With sleep, only a fraction α of nodes are active at any
+        # time, so the effective contention level is lower and the per-node
+        # success rate is higher than p_full_n.
+        #
+        # We use effective_n = n * active_fraction for the analytical side so
+        # that both empirical and analytical refer to the same contention regime.
+        #
+        # Empirical side: results.empirical_service_rate = successes / total_active_node_slots
+        #   ≈ q*(1-q)^(n_active-1)  — a per-node probability, directly comparable to p.
+        # (Do NOT use empirical_success_prob here; that is network throughput S = n_active*p,
+        #  which inflates errors by a factor of n_active.)
         active_fraction = results.state_fractions.get('active', 0.0)
         effective_n = max(1.0, config.n_nodes * active_fraction)
-        
-        # Use effective number of contending nodes for analytical calculation
+
         analytical_p = AnalyticalValidator.compute_success_probability(
             effective_n,
             config.transmission_prob
         )
-        empirical_p = results.empirical_success_prob
-        
+        # Use per-node empirical rate, not throughput
+        empirical_p = results.empirical_service_rate
+
         p_error = abs(analytical_p - empirical_p) / max(analytical_p, 1e-10)
         p_valid = p_error < tolerance
-        
+
         validation['success_probability'] = {
             'analytical': analytical_p,
             'analytical_full_n': AnalyticalValidator.compute_success_probability(
@@ -331,26 +341,28 @@ class SanityChecker:
         
         no_sleep_check = sleep_fraction < 0.01 and wakeup_fraction < 0.01
         
-        # Compare to analytical success probability
-        # Account for the fact that not all nodes are always active
-        # (some are idle when they don't have packets)
+        # Compare per-node success rate to analytical p.
+        # With no sleep all nodes are either ACTIVE (queue non-empty) or IDLE
+        # (queue empty).  Only ACTIVE nodes contend, so effective_n < n.
+        # Use empirical_service_rate (per-node) not empirical_success_prob (throughput).
         active_fraction = result.state_fractions.get('active', 0.0)
         effective_n = max(1.0, no_sleep_config.n_nodes * active_fraction)
-        
+
         analytical_p = AnalyticalValidator.compute_success_probability(
             effective_n,
             no_sleep_config.transmission_prob
         )
-        
-        p_matches = abs(result.empirical_success_prob - analytical_p) / max(analytical_p, 1e-10) < tolerance
-        
+        empirical_p = result.empirical_service_rate  # per-node, comparable to analytical p
+
+        p_matches = abs(empirical_p - analytical_p) / max(analytical_p, 1e-10) < tolerance
+
         return {
             'passed': no_sleep_check and p_matches,
             'sleep_fraction': sleep_fraction,
             'wakeup_fraction': wakeup_fraction,
-            'empirical_p': result.empirical_success_prob,
+            'empirical_p': empirical_p,
             'analytical_p': analytical_p,
-            'p_error': abs(result.empirical_success_prob - analytical_p) / analytical_p
+            'p_error': abs(empirical_p - analytical_p) / max(analytical_p, 1e-10)
         }
     
     @staticmethod
