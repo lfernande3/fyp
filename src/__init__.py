@@ -40,6 +40,27 @@ from .visualizations import (
     plot_parameter_sweep_summary,
     save_figure
 )
+from .optimization import (
+    ParameterOptimizer,
+    DutyCycleSimulator,
+    PrioritizationAnalyzer,
+    OptimizationVisualizer,
+    OptimizationResult,
+    TradeoffPoint,
+    PrioritizationComparison,
+    run_optimization_experiments,
+)
+from .validation_3gpp import (
+    ThreeGPPAlignment,
+    ThreeGPPScenario,
+    AnalyticsValidator,
+    FormulaValidationResult,
+    ValidationReport,
+    DesignGuidelines,
+    GuidelineEntry,
+    ValidationVisualizer,
+    run_o4_experiments,
+)
 
 __version__ = '1.0.0'
 __all__ = [
@@ -71,5 +92,24 @@ __all__ = [
     'InteractiveVisualizer',
     'PlotConfig',
     'plot_parameter_sweep_summary',
-    'save_figure'
+    'save_figure',
+    # O3 – Optimization
+    'ParameterOptimizer',
+    'DutyCycleSimulator',
+    'PrioritizationAnalyzer',
+    'OptimizationVisualizer',
+    'OptimizationResult',
+    'TradeoffPoint',
+    'PrioritizationComparison',
+    'run_optimization_experiments',
+    # O4 – 3GPP Validation & Guidelines
+    'ThreeGPPAlignment',
+    'ThreeGPPScenario',
+    'AnalyticsValidator',
+    'FormulaValidationResult',
+    'ValidationReport',
+    'DesignGuidelines',
+    'GuidelineEntry',
+    'ValidationVisualizer',
+    'run_o4_experiments',
 ]
