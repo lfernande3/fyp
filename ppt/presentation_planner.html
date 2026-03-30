@@ -1,0 +1,650 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>FYP Presentation Planner – 15 Minutes</title>
+<style>
+  :root {
+    --bg: #0f1117;
+    --card: #1a1d27;
+    --border: #2e3147;
+    --accent1: #6c63ff;
+    --accent2: #00d4ff;
+    --accent3: #ff6b6b;
+    --accent4: #ffd166;
+    --accent5: #06d6a0;
+    --text: #e8eaf6;
+    --muted: #8b90b4;
+    --bar-h: 44px;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Segoe UI', system-ui, sans-serif;
+    min-height: 100vh;
+    padding: 24px;
+  }
+
+  h1 {
+    font-size: 1.6rem;
+    font-weight: 700;
+    background: linear-gradient(90deg, var(--accent1), var(--accent2));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    margin-bottom: 4px;
+  }
+
+  .subtitle {
+    color: var(--muted);
+    font-size: 0.9rem;
+    margin-bottom: 28px;
+  }
+
+  /* ── Timeline bar ────────────────────────────────────────────── */
+  .timeline-wrap {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 20px;
+    margin-bottom: 28px;
+  }
+
+  .timeline-label {
+    font-size: 0.75rem;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: .08em;
+    margin-bottom: 10px;
+  }
+
+  .timeline-bar {
+    display: flex;
+    height: var(--bar-h);
+    border-radius: 8px;
+    overflow: hidden;
+    gap: 2px;
+    cursor: default;
+  }
+
+  .seg {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.65rem;
+    font-weight: 700;
+    color: #fff;
+    transition: filter .2s;
+    position: relative;
+    overflow: hidden;
+    white-space: nowrap;
+  }
+
+  .seg:hover { filter: brightness(1.25); }
+
+  .seg-label {
+    position: absolute;
+    bottom: 4px;
+    font-size: 0.55rem;
+    color: rgba(255,255,255,0.75);
+    padding: 0 4px;
+    pointer-events: none;
+  }
+
+  /* colour scheme per section */
+  .col-intro   { background: #6c63ff; }
+  .col-bg      { background: #3d83e8; }
+  .col-model   { background: #00b4d8; }
+  .col-o1      { background: #06d6a0; }
+  .col-o2      { background: #ffd166; }
+  .col-o3      { background: #ef8c4a; }
+  .col-o4      { background: #ff6b6b; }
+  .col-end     { background: #a78bfa; }
+
+  /* minutes tick */
+  .ticks {
+    display: flex;
+    margin-top: 6px;
+    position: relative;
+  }
+  .tick {
+    flex: none;
+    font-size: 0.65rem;
+    color: var(--muted);
+    text-align: center;
+    width: 6.66%;
+  }
+
+  /* ── Slides grid ─────────────────────────────────────────────── */
+  .section-title {
+    font-size: 1rem;
+    font-weight: 600;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: .07em;
+    margin: 28px 0 14px;
+  }
+
+  .slides-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+    gap: 16px;
+  }
+
+  .slide-card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 18px 20px;
+    transition: border-color .2s, transform .15s;
+    cursor: pointer;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .slide-card::before {
+    content: '';
+    position: absolute;
+    left: 0; top: 0; bottom: 0;
+    width: 4px;
+    border-radius: 4px 0 0 4px;
+  }
+
+  .slide-card:hover {
+    border-color: #454870;
+    transform: translateY(-2px);
+  }
+
+  /* accent stripe per objective */
+  .slide-card.intro::before   { background: #6c63ff; }
+  .slide-card.bg::before      { background: #3d83e8; }
+  .slide-card.model::before   { background: #00b4d8; }
+  .slide-card.o1::before      { background: #06d6a0; }
+  .slide-card.o2::before      { background: #ffd166; }
+  .slide-card.o3::before      { background: #ef8c4a; }
+  .slide-card.o4::before      { background: #ff6b6b; }
+  .slide-card.end::before     { background: #a78bfa; }
+
+  .slide-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 10px;
+  }
+
+  .slide-num {
+    font-size: 0.7rem;
+    font-weight: 700;
+    color: var(--muted);
+    background: var(--bg);
+    padding: 2px 8px;
+    border-radius: 20px;
+    border: 1px solid var(--border);
+  }
+
+  .slide-time {
+    font-size: 0.75rem;
+    color: var(--accent4);
+    font-weight: 600;
+    margin-left: auto;
+  }
+
+  .slide-title {
+    font-size: 1rem;
+    font-weight: 700;
+    margin-bottom: 10px;
+    line-height: 1.3;
+  }
+
+  .bullet-list {
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+  }
+
+  .bullet-list li {
+    font-size: 0.82rem;
+    color: var(--muted);
+    padding-left: 16px;
+    position: relative;
+    line-height: 1.45;
+  }
+
+  .bullet-list li::before {
+    content: '›';
+    position: absolute;
+    left: 0;
+    color: var(--accent1);
+    font-weight: 700;
+  }
+
+  .speaker-note {
+    margin-top: 12px;
+    padding: 10px 12px;
+    background: rgba(108, 99, 255, 0.08);
+    border-left: 3px solid var(--accent1);
+    border-radius: 0 6px 6px 0;
+    font-size: 0.78rem;
+    color: #a8b0d8;
+    font-style: italic;
+    line-height: 1.5;
+  }
+
+  .tag {
+    display: inline-block;
+    font-size: 0.65rem;
+    font-weight: 700;
+    padding: 2px 8px;
+    border-radius: 20px;
+    margin-bottom: 8px;
+    text-transform: uppercase;
+    letter-spacing: .06em;
+  }
+
+  .tag-intro  { background: rgba(108,99,255,.2);  color: #a09cf7; }
+  .tag-bg     { background: rgba(61,131,232,.2);  color: #80b3f0; }
+  .tag-model  { background: rgba(0,180,216,.2);   color: #67d9f0; }
+  .tag-o1     { background: rgba(6,214,160,.2);   color: #4ef0c0; }
+  .tag-o2     { background: rgba(255,209,102,.2); color: #ffd166; }
+  .tag-o3     { background: rgba(239,140,74,.2);  color: #f0a870; }
+  .tag-o4     { background: rgba(255,107,107,.2); color: #ff9090; }
+  .tag-end    { background: rgba(167,139,250,.2); color: #c4b0fc; }
+
+  /* ── Canva tips panel ────────────────────────────────────────── */
+  .tips-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+    gap: 14px;
+    margin-top: 14px;
+  }
+
+  .tip-card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 16px;
+  }
+
+  .tip-card h4 {
+    font-size: 0.85rem;
+    font-weight: 700;
+    margin-bottom: 8px;
+    color: var(--accent2);
+  }
+
+  .tip-card p, .tip-card li {
+    font-size: 0.78rem;
+    color: var(--muted);
+    line-height: 1.5;
+  }
+
+  .tip-card ul { padding-left: 14px; }
+
+  /* ── Overall stats bar ───────────────────────────────────────── */
+  .stats-row {
+    display: flex;
+    gap: 14px;
+    flex-wrap: wrap;
+    margin-bottom: 22px;
+  }
+
+  .stat-chip {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 10px 18px;
+    text-align: center;
+  }
+
+  .stat-chip .val {
+    font-size: 1.4rem;
+    font-weight: 800;
+    background: linear-gradient(90deg, var(--accent1), var(--accent2));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+
+  .stat-chip .lbl {
+    font-size: 0.72rem;
+    color: var(--muted);
+    margin-top: 2px;
+  }
+</style>
+</head>
+<body>
+
+<h1>FYP Presentation Planner</h1>
+<p class="subtitle">Sleep-Based Low-Latency Access for M2M Communications &nbsp;·&nbsp; 15 min</p>
+
+<!-- Stats row -->
+<div class="stats-row">
+  <div class="stat-chip"><div class="val">12</div><div class="lbl">Slides</div></div>
+  <div class="stat-chip"><div class="val">15 min</div><div class="lbl">Total Duration</div></div>
+  <div class="stat-chip"><div class="val">4</div><div class="lbl">Objectives Covered</div></div>
+  <div class="stat-chip"><div class="val">~75s</div><div class="lbl">Avg / Slide</div></div>
+</div>
+
+<!-- Timeline -->
+<div class="timeline-wrap">
+  <div class="timeline-label">Time distribution (15 minutes)</div>
+  <div class="timeline-bar" id="bar">
+    <!-- widths = % of 15 min -->
+    <div class="seg col-intro" style="flex:0.5" title="Slide 1–2 · Intro (0:30)"><span class="seg-label">Intro</span></div>
+    <div class="seg col-bg"    style="flex:2"   title="Slide 3–4 · Background (2:00)"><span class="seg-label">Background</span></div>
+    <div class="seg col-model" style="flex:1.5" title="Slide 5 · System Model (1:30)"><span class="seg-label">Model</span></div>
+    <div class="seg col-o1"    style="flex:2"   title="Slide 6 · O1 Framework (2:00)"><span class="seg-label">O1</span></div>
+    <div class="seg col-o2"    style="flex:2.5" title="Slide 7–8 · O2 Parameters (2:30)"><span class="seg-label">O2</span></div>
+    <div class="seg col-o3"    style="flex:2.5" title="Slide 9 · O3 Optimization (2:30)"><span class="seg-label">O3</span></div>
+    <div class="seg col-o4"    style="flex:2"   title="Slide 10 · O4 Validation (2:00)"><span class="seg-label">O4</span></div>
+    <div class="seg col-end"   style="flex:2"   title="Slide 11–12 · Wrap-up (2:00)"><span class="seg-label">Wrap-up</span></div>
+  </div>
+  <div class="ticks">
+    <div class="tick">0</div><div class="tick">1</div><div class="tick">2</div>
+    <div class="tick">3</div><div class="tick">4</div><div class="tick">5</div>
+    <div class="tick">6</div><div class="tick">7</div><div class="tick">8</div>
+    <div class="tick">9</div><div class="tick">10</div><div class="tick">11</div>
+    <div class="tick">12</div><div class="tick">13</div><div class="tick">14</div><div class="tick">15</div>
+  </div>
+</div>
+
+<!-- Slide cards -->
+<div class="section-title">Slide-by-Slide Breakdown</div>
+<div class="slides-grid">
+
+  <!-- SLIDE 1 -->
+  <div class="slide-card intro">
+    <div class="slide-header">
+      <span class="slide-num">01</span>
+      <span class="tag tag-intro">Opening</span>
+      <span class="slide-time">⏱ 0:00 – 0:30</span>
+    </div>
+    <div class="slide-title">Title Slide</div>
+    <ul class="bullet-list">
+      <li>Project title: "Sleep-Based Low-Latency Access for M2M Communications"</li>
+      <li>Your name, supervisor, institution, date</li>
+      <li>A single compelling visual — e.g., an IoT node with ZZZ sleep ↔ transmit icons</li>
+    </ul>
+    <div class="speaker-note">Let the slide sit for 10s, then briefly introduce yourself. Don't read the title aloud word-for-word.</div>
+  </div>
+
+  <!-- SLIDE 2 -->
+  <div class="slide-card intro">
+    <div class="slide-header">
+      <span class="slide-num">02</span>
+      <span class="tag tag-intro">Opening</span>
+      <span class="slide-time">⏱ 0:30 – 1:00</span>
+    </div>
+    <div class="slide-title">Agenda</div>
+    <ul class="bullet-list">
+      <li>Motivation &amp; Problem</li>
+      <li>System Model &amp; Methodology</li>
+      <li>Simulation Framework (O1)</li>
+      <li>Parameter Impact (O2)</li>
+      <li>Optimisation &amp; Trade-offs (O3)</li>
+      <li>3GPP Validation (O4)</li>
+      <li>Key Findings &amp; Conclusion</li>
+    </ul>
+    <div class="speaker-note">Keep it visual — numbered icons or a progress bar. "I'll walk you through these 7 areas in 15 minutes."</div>
+  </div>
+
+  <!-- SLIDE 3 -->
+  <div class="slide-card bg">
+    <div class="slide-header">
+      <span class="slide-num">03</span>
+      <span class="tag tag-bg">Motivation</span>
+      <span class="slide-time">⏱ 1:00 – 2:30</span>
+    </div>
+    <div class="slide-title">The Problem: Battery Life vs. Low Latency</div>
+    <ul class="bullet-list">
+      <li>Massive IoT: billions of MTDs sending small packets sporadically</li>
+      <li>Devices must sleep to survive years on a battery</li>
+      <li>But sleeping = missed access windows = higher delay</li>
+      <li>Core tension: <strong>minimise delay</strong> vs. <strong>maximise lifetime</strong></li>
+      <li>No single analytic formula captures stochastic variability at scale</li>
+    </ul>
+    <div class="speaker-note">Use a 2-axis diagram: left axis = battery lifetime (years), bottom axis = delay (slots). Show the trade-off arrow. This is your hook.</div>
+  </div>
+
+  <!-- SLIDE 4 -->
+  <div class="slide-card bg">
+    <div class="slide-header">
+      <span class="slide-num">04</span>
+      <span class="tag tag-bg">Background</span>
+      <span class="slide-time">⏱ 2:30 – 4:00</span>
+    </div>
+    <div class="slide-title">Background: On-Demand Sleep &amp; Slotted Aloha</div>
+    <ul class="bullet-list">
+      <li>Slotted Aloha: each active node transmits with probability q per slot</li>
+      <li>On-demand sleep: node sleeps after idle timer ts expires, wakes on arrival</li>
+      <li>4 states: ACTIVE → IDLE → SLEEP → WAKEUP → ACTIVE</li>
+      <li>3GPP mapping: MICO mode ≈ on-demand sleep, T3324 ≈ ts, RA-SDT ≈ tw</li>
+      <li>Based on Wang et al., 2024 analytical model</li>
+    </ul>
+    <div class="speaker-note">Show a state-machine diagram (circle nodes with arrows). Mention you're extending the paper with a simulator.</div>
+  </div>
+
+  <!-- SLIDE 5 -->
+  <div class="slide-card model">
+    <div class="slide-header">
+      <span class="slide-num">05</span>
+      <span class="tag tag-model">System Model</span>
+      <span class="slide-time">⏱ 4:00 – 5:30</span>
+    </div>
+    <div class="slide-title">System Model &amp; Key Parameters</div>
+    <ul class="bullet-list">
+      <li>n nodes (100–10,000), each with energy budget E</li>
+      <li>Poisson arrivals (rate λ), unsaturated regime (λ &lt; μ)</li>
+      <li>Power hierarchy: PT &gt; PB &gt; PI &gt; PW &gt; PS (3GPP NR values)</li>
+      <li>Metrics: mean delay T̄, battery lifetime L̄, throughput, success prob p</li>
+      <li>Slot duration 6 ms → lifetime in realistic years</li>
+    </ul>
+    <div class="speaker-note">A clean parameter table + power state bar chart works great here. Keep it quick — this is setup not results.</div>
+  </div>
+
+  <!-- SLIDE 6 -->
+  <div class="slide-card o1">
+    <div class="slide-header">
+      <span class="slide-num">06</span>
+      <span class="tag tag-o1">O1 — Framework</span>
+      <span class="slide-time">⏱ 5:30 – 7:30</span>
+    </div>
+    <div class="slide-title">Simulation Framework (O1)</div>
+    <ul class="bullet-list">
+      <li>Pure Python + SimPy discrete-event simulator</li>
+      <li>Node class: state machine, packet queue, energy tracker</li>
+      <li>Simulator class: n-node loop, collision detection (success if exactly 1 Tx)</li>
+      <li>BatchSimulator: 20–50 replications per config, confidence intervals</li>
+      <li>6 power profiles: NB-IoT, LoRa, LTE-M, 5G NR mMTC, Generic</li>
+      <li>Validated: simulated p &amp; μ match analytical formulas ✓</li>
+    </ul>
+    <div class="speaker-note">Show a simple architecture diagram: Node → Simulator → BatchSimulator → Results. One code snippet optional but keep it brief (3 lines max).</div>
+  </div>
+
+  <!-- SLIDE 7 -->
+  <div class="slide-card o2">
+    <div class="slide-header">
+      <span class="slide-num">07</span>
+      <span class="tag tag-o2">O2 — Parameters</span>
+      <span class="slide-time">⏱ 7:30 – 9:30</span>
+    </div>
+    <div class="slide-title">Parameter Impact: Effect of q and ts (O2)</div>
+    <ul class="bullet-list">
+      <li>Sweep q (0.01–0.5): higher q → lower delay but faster battery drain</li>
+      <li>Sweep ts (1–100 slots): larger ts → longer lifetime but higher delay</li>
+      <li>Traffic models: Poisson (default) + bursty (batch arrivals)</li>
+      <li>Bursty traffic amplifies tail delay — 95th/99th percentile grows sharply</li>
+      <li>Optimal q ≈ 1/n rule confirmed by simulation</li>
+    </ul>
+    <div class="speaker-note">Use actual simulation plots here — lifetime vs q and delay vs ts curves. Two plots side by side. This is where simulation adds value over analytics.</div>
+  </div>
+
+  <!-- SLIDE 8 -->
+  <div class="slide-card o2">
+    <div class="slide-header">
+      <span class="slide-num">08</span>
+      <span class="tag tag-o2">O2 — Scenarios</span>
+      <span class="slide-time">⏱ (continued from 07)</span>
+    </div>
+    <div class="slide-title">Low-Latency vs. Battery-Life Scenarios</div>
+    <ul class="bullet-list">
+      <li>Low-Latency priority: ts=1, q=2/n → minimal delay, shorter life</li>
+      <li>Balanced: ts=10, q=1/n → moderate trade-off</li>
+      <li>Battery-Life priority: ts=50, q=0.5/n → years of life, higher delay</li>
+      <li>Scatter plot: each ts value = one Pareto point (delay, lifetime)</li>
+    </ul>
+    <div class="speaker-note">The scatter plot of 3 labelled points is very clean for Canva — colour-code them (red=latency, green=balanced, blue=battery).</div>
+  </div>
+
+  <!-- SLIDE 9 -->
+  <div class="slide-card o3">
+    <div class="slide-header">
+      <span class="slide-num">09</span>
+      <span class="tag tag-o3">O3 — Optimisation</span>
+      <span class="slide-time">⏱ 9:30 – 11:30</span>
+    </div>
+    <div class="slide-title">Optimisation &amp; Pareto Trade-off (O3)</div>
+    <ul class="bullet-list">
+      <li>Grid search over (q, ts) space → lifetime/delay heatmaps</li>
+      <li>Pareto frontier: set of (max lifetime, min delay) non-dominated points</li>
+      <li>On-demand sleep dominates duty-cycling across all traffic loads</li>
+      <li>DutyCycleSimulator confirms: on-demand saves 20–40% more energy</li>
+      <li>Design rule: q* = 1/n is near-optimal for most λ values</li>
+    </ul>
+    <div class="speaker-note">The Pareto frontier curve is your most impressive result — feature it large. Heatmap as a secondary inset is a nice touch.</div>
+  </div>
+
+  <!-- SLIDE 10 -->
+  <div class="slide-card o4">
+    <div class="slide-header">
+      <span class="slide-num">10</span>
+      <span class="tag tag-o4">O4 — 3GPP Validation</span>
+      <span class="slide-time">⏱ 11:30 – 13:00</span>
+    </div>
+    <div class="slide-title">3GPP Validation &amp; Design Guidelines (O4)</div>
+    <ul class="bullet-list">
+      <li>MICO mode → on-demand sleep; T3324 timer → ts; RA-SDT → wake-up tw</li>
+      <li>4 standard 3GPP scenarios: NB-IoT + NR mMTC (2-step &amp; 4-step RA-SDT)</li>
+      <li>Simulated p, μ, T̄, L̄ validated within ±5% of analytical formulas</li>
+      <li>Convergence: error &lt;5% at 10⁵ slots, stabilises by 10⁶ slots</li>
+      <li>Guideline table: recommended ts &amp; q* for each traffic load λ</li>
+    </ul>
+    <div class="speaker-note">Show one clean analytical-vs-simulated comparison chart. The guideline table is great as a visual callout box at the bottom.</div>
+  </div>
+
+  <!-- SLIDE 11 -->
+  <div class="slide-card end">
+    <div class="slide-header">
+      <span class="slide-num">11</span>
+      <span class="tag tag-end">Conclusion</span>
+      <span class="slide-time">⏱ 13:00 – 14:30</span>
+    </div>
+    <div class="slide-title">Key Findings &amp; Conclusion</div>
+    <ul class="bullet-list">
+      <li>✅ Simulator faithfully reproduces analytical results from Wang et al.</li>
+      <li>✅ On-demand sleep outperforms duty-cycling by up to 40% in energy</li>
+      <li>✅ q* = 1/n is a robust design rule across traffic loads</li>
+      <li>✅ T3324 (ts) is the dominant knob: small ts → low latency, large ts → long life</li>
+      <li>✅ All 4 objectives (O1–O4) fully complete</li>
+      <li>Future: heterogeneous nodes, capture effect, multi-channel extension</li>
+    </ul>
+    <div class="speaker-note">Use big checkmarks/icons per point. Keep future work to 1 bullet — don't open new questions. End with your "so what": this gives operators a concrete tuning guide.</div>
+  </div>
+
+  <!-- SLIDE 12 -->
+  <div class="slide-card end">
+    <div class="slide-header">
+      <span class="slide-num">12</span>
+      <span class="tag tag-end">Closing</span>
+      <span class="slide-time">⏱ 14:30 – 15:00</span>
+    </div>
+    <div class="slide-title">Thank You &amp; Q&amp;A</div>
+    <ul class="bullet-list">
+      <li>Project title + your name</li>
+      <li>GitHub repo / notebook link (QR code if you have it)</li>
+      <li>One memorable takeaway sentence</li>
+      <li>Leave the Pareto frontier plot visible in background</li>
+    </ul>
+    <div class="speaker-note">"The simulator shows that with a T3324 timer of just 10 slots and q = 1/n, IoT devices can achieve sub-second latency while lasting over 2 years on a single AA battery."</div>
+  </div>
+
+</div>
+
+<!-- Canva tips -->
+<div class="section-title">Canva Design Tips</div>
+<div class="tips-grid">
+
+  <div class="tip-card">
+    <h4>Colour Palette</h4>
+    <ul>
+      <li>Background: #0f1117 (dark) or white</li>
+      <li>Accent 1: #6c63ff (purple – O1/framework)</li>
+      <li>Accent 2: #00d4ff (cyan – model)</li>
+      <li>Accent 3: #06d6a0 (green – results)</li>
+      <li>Accent 4: #ffd166 (yellow – parameters)</li>
+      <li>Warning: #ff6b6b (red – validation)</li>
+    </ul>
+  </div>
+
+  <div class="tip-card">
+    <h4>Slide Layout</h4>
+    <ul>
+      <li>Use 16:9 widescreen (1920×1080)</li>
+      <li>Left panel: title + 3–4 bullets (40%)</li>
+      <li>Right panel: plot / diagram (60%)</li>
+      <li>Every content slide needs a visual — no text-only slides</li>
+      <li>Use consistent section colour strips at the top</li>
+    </ul>
+  </div>
+
+  <div class="tip-card">
+    <h4>Typography</h4>
+    <ul>
+      <li>Title: 36–40pt, bold (e.g. Montserrat Bold)</li>
+      <li>Body bullets: 18–20pt (no smaller)</li>
+      <li>Speaker cue text: 12pt, light grey, italic</li>
+      <li>Max 4–5 bullets per slide</li>
+      <li>Avoid full sentences — use fragments</li>
+    </ul>
+  </div>
+
+  <div class="tip-card">
+    <h4>Key Visuals to Include</h4>
+    <ul>
+      <li>Slide 4: State machine (4 circles + arrows)</li>
+      <li>Slide 7: Lifetime vs q &amp; Delay vs ts line charts</li>
+      <li>Slide 8: 3-point scatter (Pareto scenarios)</li>
+      <li>Slide 9: Pareto frontier curve (your hero chart)</li>
+      <li>Slide 10: Analytical vs simulated comparison bar</li>
+    </ul>
+  </div>
+
+  <div class="tip-card">
+    <h4>Canva Shortcuts</h4>
+    <ul>
+      <li>Use "Presenter view" for speaker notes</li>
+      <li>Smart mockup: paste plots from notebook as PNG</li>
+      <li>Use grid/frame elements for consistent plot placeholders</li>
+      <li>Brand kit: save your 5 accent colours for reuse</li>
+      <li>Export as PDF for submission + PPTX for backup</li>
+    </ul>
+  </div>
+
+  <div class="tip-card">
+    <h4>Timing Guidance</h4>
+    <ul>
+      <li>Practice aloud — 15 min is tight</li>
+      <li>If running long: cut Slide 8 (scenarios detail)</li>
+      <li>If running short: expand Slide 9 Pareto results</li>
+      <li>Leave 2 min for Q&amp;A buffer if slot allows</li>
+      <li>Have 1 backup slide: the guideline table from O4</li>
+    </ul>
+  </div>
+
+</div>
+
+</body>
+</html>
