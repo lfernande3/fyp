@@ -50,7 +50,7 @@ The parameters I sweep are transmission probability *q* (0.01 to 0.5), idle time
 
 ---
 
-## Slide 03 — The Problem & Background `⏱ 1:20 – 3:20`
+## Slide 02 — The Problem & Background `⏱ 1:20 – 3:20`
 
 `[Gesture to the left panel.]`
 
@@ -65,6 +65,24 @@ This produces four states: Active → Idle → Sleep → Wake-up → Active.
 Importantly, this maps directly onto 3GPP standards: MICO mode is on-demand sleep, the T3324 timer corresponds to *tₛ*, and RA-SDT corresponds to the wake-up procedure. The analytical foundation comes from the scheme I study which provides closed-form expressions for delay and lifetime. My project builds the simulation framework to validate and extend those results.
 
 `[Advance to Slide 04 at ~3:20]`
+
+---
+
+## Slide 03 — System Model & Key Parameters `⏱ 0:20 – 1:20`
+
+`[Gesture to the left side of the slide.]`
+
+Let me first outline the system we are studying. We consider *n* Machine-Type Devices, ranging from 100 to 10,000, communicating via slotted Aloha. Packets arrive according to a Poisson process with rate λ, and we operate strictly in the unsaturated regime where λ is less than the service rate μ to guarantee finite delays.
+
+`[Gesture to the power profiles on the right.]`
+
+Each node follows a clear power hierarchy: transmit power is highest, followed by busy, idle, wake-up, and sleep — using realistic 3GPP NR values. Each slot has a duration of 6 milliseconds.
+
+The four core metrics I track are mean queueing delay \bar{T}, expected battery lifetime \bar{L}, success probability *p*, and service rate *μ*.
+
+The parameters I sweep are transmission probability *q* (0.01 to 0.5), idle timer *tₛ* (1 to 100 slots), number of nodes *n*, and arrival rate λ. Everything feeds into those four metrics — and the tension between them is the heart of the problem.
+
+`[Advance to Slide 03 at ~1:20]`
 
 ---
 
