@@ -13,6 +13,10 @@ import random
 from typing import Optional, Dict, List, Tuple
 
 
+SLOT_DURATION_MS = 6.0
+_SLOT_DURATION_H = SLOT_DURATION_MS / 3_600_000.0  # 6 ms → hours
+
+
 class NodeState(Enum):
     """States that an MTD node can be in"""
     ACTIVE = "active"      # Node has packets and is actively contending
@@ -63,7 +67,7 @@ class Node:
         
         Args:
             node_id: Unique identifier for this node
-            initial_energy: Initial energy budget in units
+            initial_energy: Initial energy budget in mWh
             idle_timer: Number of slots to wait idle before sleeping (ts)
             wakeup_time: Number of slots required to wake up (tw)
             power_rates: Dictionary with keys 'PT', 'PB', 'PI', 'PW', 'PS'
@@ -280,7 +284,9 @@ class Node:
         elif self.state == NodeState.WAKEUP:
             energy_consumed = self.power_rates['PW']
         
-        # Update energy tracking
+        # Scale power (mW) by slot duration (h) → energy in mWh
+        energy_consumed *= _SLOT_DURATION_H
+
         self.energy -= energy_consumed
         self.energy_consumed_by_state[self.state] += energy_consumed
         

@@ -1,19 +1,25 @@
-# FYP Presentation Planner
+# FYP Presentation Planner — Revised
 
 **Sleep-Based Low-Latency Access for M2M Communications** · 15 min
 
 | Slides | Duration | Objectives | Avg / Slide |
 |--------|----------|------------|-------------|
-| 12     | 15 min   | 4          | ~75 s       |
+| 11     | 15 min   | 4 (O1–O4)  | ~82 s       |
+
+> **What changed from v1:** Removed the Agenda slide (saves 30s, unnecessary at 15 min).
+> Merged Problem + Background into one stronger opening. Split O3 into Pareto (hero) + Duty-Cycling
+> (separate win). Slide 08 promoted from 30s cameo to a full 60s standalone.
+> Net result: every slide now has enough breathing room to land properly.
 
 ---
 
 ## Time Distribution
 
 ```
-0        1        2        3        4        5        6        7        8        9        10       11       12       13       14       15
-|  Intro  |         Background          |   Model  |      O1       |         O2          |         O3          |      O4       |   Wrap-up   |
- (0:30)         (3:00)                   (1:30)        (2:00)             (2:30)                (2:30)              (1:30)        (2:00)
+0    0:20  2:20  3:20   5:00    7:00  8:00    10:30 11:30   13:00 14:10  15:00
+|Title|  Problem &  |System| O1 Sim  | O2 Sweeps |O2 |  O3 Pareto  | O4  |Findings|Q&A|
+|     |  Background |Model | Fwk     |  q & ts   |Scn| + DutyCycle |Val  |        |   |
+ 0:20    2:00    1:00   1:40    2:00     1:00   2:30    1:00   1:30   1:10   0:50
 ```
 
 ---
@@ -24,67 +30,52 @@
 
 ---
 
-#### Slide 01 — Title Slide `⏱ 0:00 – 0:30`
+#### Slide 01 — Title `⏱ 0:00 – 0:20`
 
-- Project title: "Sleep-Based Low-Latency Access for M2M Communications"
-- Your name, supervisor, institution, date
-- A single compelling visual — e.g., an IoT node with ZZZ sleep ↔ transmit icons
+- "Sleep-Based Low-Latency Access for M2M Communications"
+- Your name · Supervisor · Institution · Date
+- Visual: IoT node icon with sleep ZZZ ↔ transmit signal arrows
 
-> **Speaker note:** Let the slide sit for 10 s, then briefly introduce yourself. Don't read the title aloud word-for-word.
-
----
-
-#### Slide 02 — Agenda `⏱ 0:30 – 1:00`
-
-- Motivation & Problem
-- System Model & Methodology
-- Simulation Framework (O1)
-- Parameter Impact (O2)
-- Optimisation & Trade-offs (O3)
-- 3GPP Validation (O4)
-- Key Findings & Conclusion
-
-> **Speaker note:** Keep it visual — numbered icons or a progress bar. "I'll walk you through these 7 areas in 15 minutes."
+> **Speaker note:** Let it sit. Don't read the title. Open with: *"In IoT networks, every time a sensor wakes up to send a packet, it costs battery life. My project asks: how do we tune that sleep behaviour to hit both goals at once?"*
 
 ---
 
-### Background
+### Background & Motivation
 
 ---
 
-#### Slide 03 — The Problem: Battery Life vs. Low Latency `⏱ 1:00 – 2:30`
+#### Slide 02 — The Problem & Background `⏱ 0:20 – 2:20` · 2 min
 
-- Massive IoT: billions of MTDs sending small packets sporadically
-- Devices must sleep to survive years on a battery
-- But sleeping = missed access windows = higher delay
-- Core tension: **minimise delay** vs. **maximise lifetime**
-- No single analytic formula captures stochastic variability at scale
+**Left panel — the tension (motivation):**
+- Billions of battery-powered MTDs send small packets sporadically
+- Must sleep to survive years on a coin cell
+- Sleeping = missed access windows = higher access delay
+- Core tension: **minimise delay** ↔ **maximise battery lifetime**
 
-> **Speaker note:** Use a 2-axis diagram: left axis = battery lifetime (years), bottom axis = delay (slots). Show the trade-off arrow. This is your hook.
-
----
-
-#### Slide 04 — Background: On-Demand Sleep & Slotted Aloha `⏱ 2:30 – 4:00`
-
+**Right panel — how on-demand sleep works:**
 - Slotted Aloha: each active node transmits with probability q per slot
-- On-demand sleep: node sleeps after idle timer ts expires, wakes on arrival
-- 4 states: ACTIVE → IDLE → SLEEP → WAKEUP → ACTIVE
-- 3GPP mapping: MICO mode ≈ on-demand sleep, T3324 ≈ ts, RA-SDT ≈ tw
+- On-demand sleep: node sleeps after idle timer ts expires, wakes on new arrival
+- 4 states: `ACTIVE → IDLE → SLEEP → WAKEUP → ACTIVE`
+- 3GPP mapping: MICO mode ≈ on-demand sleep · T3324 ≈ ts · RA-SDT ≈ tw
 - Based on Wang et al., 2024 analytical model
 
-> **Speaker note:** Show a state-machine diagram (circle nodes with arrows). Mention you're extending the paper with a simulator.
+> **Speaker note:** Draw the state machine on the right half (4 circles + arrows in Canva).
+> On the left, use `slide03_tradeoff_ts_scatter.png` as the motivating image — show it briefly
+> to say *"this is what the trade-off actually looks like."*
+> Keep moving — this slide sets up everything else. Target: off this slide by 2:20.
 
 ---
 
-#### Slide 05 — System Model & Key Parameters `⏱ 4:00 – 5:30`
+#### Slide 03 — System Model & Key Parameters `⏱ 2:20 – 3:20` · 1 min
 
-- n nodes (100–10,000), each with energy budget E
-- Poisson arrivals (rate λ), unsaturated regime (λ < μ)
-- Power hierarchy: PT > PB > PI > PW > PS (3GPP NR values)
-- Metrics: mean delay T̄, battery lifetime L̄, throughput, success prob p
-- Slot duration 6 ms → lifetime in realistic years
+- n nodes (100–10,000), arrival rate λ (Poisson, unsaturated: λ < μ)
+- Power states: PT > PB > PI > PW > PS — slot duration 6 ms (3GPP NR)
+- Key metrics: mean delay T̄, battery lifetime L̄, success prob p, service rate μ
+- Parameters swept: q (0.01–0.5), ts (1–100), n (10–500), λ (0.001–0.1)
 
-> **Speaker note:** A clean parameter table + power state bar chart works great here. Keep it quick — this is setup not results.
+> **Speaker note:** Use `slide05_power_profiles.png` as the visual (bar chart on the right).
+> A clean parameter table on the left. Say *"everything feeds into four metrics"* — point at them.
+> This slide is setup, not results — keep it under 60 seconds.
 
 ---
 
@@ -92,63 +83,98 @@
 
 ---
 
-#### Slide 06 — Simulation Framework (O1) `⏱ 5:30 – 7:30`
+#### Slide 04 — O1: Simulation Framework `⏱ 3:20 – 5:00` · 1 min 40 s
 
 - Pure Python + SimPy discrete-event simulator
-- Node class: state machine, packet queue, energy tracker
-- Simulator class: n-node loop, collision detection (success if exactly 1 Tx)
-- BatchSimulator: 20–50 replications per config, confidence intervals
+- **Node class:** state machine · packet queue · energy tracker
+- **Simulator:** n-node slotted loop · collision detection (success = exactly 1 Tx)
+- **BatchSimulator:** 20 replications per config · confidence intervals
 - 6 power profiles: NB-IoT, LoRa, LTE-M, 5G NR mMTC, Generic
-- Validated: simulated p & μ match analytical formulas ✓
+- Validation: simulated p & μ match analytical formulas within ±5% ✓
 
-> **Speaker note:** Show a simple architecture diagram: Node → Simulator → BatchSimulator → Results. One code snippet optional but keep it brief (3 lines max).
+> **Speaker note:** Architecture diagram left: `Node → Simulator → BatchSimulator → Results` (draw in Canva, 4 boxes).
+> Right panel: use `slide06_timeseries.png` (queue / energy / state stacked area over time).
+> Say *"the simulator runs stably at 80,000 slots per replication — enough to deplete batteries
+> and measure tail delays."* Don't over-explain the code.
 
 ---
 
-#### Slide 07 — Parameter Impact: Effect of q and ts (O2) `⏱ 7:30 – 9:00`
+#### Slide 05 — O2: Parameter Sweep — q and ts `⏱ 5:00 – 7:00` · 2 min
 
-- Sweep q (0.01–0.5): higher q → lower delay but faster battery drain
-- Sweep ts (1–100 slots): larger ts → longer lifetime but higher delay
-- Traffic models: Poisson (default) + bursty (batch arrivals)
+- **Sweep q (0.01 → 0.35):** higher q → lower delay, but faster battery drain
+- **Sweep ts (1 → 100 slots):** larger ts → longer lifetime, higher delay
+- Both effects are monotonic and confirmed across 20 replications
+- Optimal transmission probability: **q* ≈ 1/n** (confirmed by simulation)
 - Bursty traffic amplifies tail delay — 95th/99th percentile grows sharply
-- Optimal q ≈ 1/n rule confirmed by simulation
 
-> **Speaker note:** Use actual simulation plots here — lifetime vs q and delay vs ts curves. Two plots side by side. This is where simulation adds value over analytics.
-
----
-
-#### Slide 08 — Low-Latency vs. Battery-Life Scenarios `⏱ 9:00 – 9:30`
-
-- Low-Latency priority: ts=1, q=2/n → minimal delay, shorter life
-- Balanced: ts=10, q=1/n → moderate trade-off
-- Battery-Life priority: ts=50, q=0.5/n → years of life, higher delay
-- Scatter plot: each ts value = one Pareto point (delay, lifetime)
-
-> **Speaker note:** The scatter plot of 3 labelled points is very clean for Canva — colour-code them (red=latency, green=balanced, blue=battery).
+> **Speaker note:** Show `slide07_q_sweep.png` and `slide07_ts_sweep.png` side by side.
+> Point at the "Lifetime–Delay Trade-off" scatter in each — that's the key sub-plot.
+> Say: *"every point on those curves is a design choice — q controls where you sit,
+> ts controls which curve you're on."* This motivates the next two slides naturally.
 
 ---
 
-#### Slide 09 — Optimisation & Pareto Trade-off (O3) `⏱ 9:30 – 11:30`
+#### Slide 06 — O2: Prioritisation Scenarios `⏱ 7:00 – 8:00` · 1 min
 
-- Grid search over (q, ts) space → lifetime/delay heatmaps
-- Pareto frontier: set of (max lifetime, min delay) non-dominated points
-- On-demand sleep dominates duty-cycling across all traffic loads
-- DutyCycleSimulator confirms: on-demand saves 20–40% more energy
-- Design rule: q* = 1/n is near-optimal for most λ values
+| Scenario | ts | q | Result |
+|----------|----|---|--------|
+| **Low-Latency** | 1 | 2/n | Minimal delay · shorter life |
+| **Balanced** | 10 | 1/n | Moderate trade-off |
+| **Battery-Life** | 50 | 0.5/n | Years of life · higher delay |
 
-> **Speaker note:** The Pareto frontier curve is your most impressive result — feature it large. Heatmap as a secondary inset is a nice touch.
+- Quantified gains/losses vs balanced baseline computed for each scenario
+- Scatter of 3 labelled points makes the trade-off immediately readable
+
+> **Speaker note:** Use `slide08_scenario_comparison.png` — the bottom-centre scatter
+> (Lifetime–Delay Tradeoff panel) is the cleanest sub-chart to crop and enlarge.
+> This slide bridges the *"what happens"* of slide 05 to the *"what's optimal"* of slide 07.
 
 ---
 
-#### Slide 10 — 3GPP Validation & Design Guidelines (O4) `⏱ 11:30 – 13:00`
+#### Slide 07 — O3: Pareto Frontier `⏱ 8:00 – 10:30` · 2 min 30 s ⭐ HERO
 
-- MICO mode → on-demand sleep; T3324 timer → ts; RA-SDT → wake-up tw
-- 4 standard 3GPP scenarios: NB-IoT + NR mMTC (2-step & 4-step RA-SDT)
-- Simulated p, μ, T̄, L̄ validated within ±5% of analytical formulas
-- Convergence: error <5% at 10⁵ slots, stabilises by 10⁶ slots
-- Guideline table: recommended ts & q* for each traffic load λ
+- Grid search over full (q, ts) parameter space → 2-D lifetime/delay heatmaps
+- **Pareto frontier:** each ts value yields one best (max-lifetime, min-delay) point
+- Moving along the frontier: increasing ts trades delay for lifetime monotonically
+- q* = 1/n is near-optimal across the entire frontier
+- Design rule: **ts is the primary knob** — q fine-tunes within a chosen ts
 
-> **Speaker note:** Show one clean analytical-vs-simulated comparison chart. The guideline table is great as a visual callout box at the bottom.
+> **Speaker note:** Feature `slide09_pareto_frontier.png` large — full right half of slide.
+> Put `slide09_heatmaps.png` as a small inset (bottom-left).
+> Walk through the frontier slowly: *"each dot is a different ts value.
+> Moving left means you accept more delay to get more battery life.
+> The sweet spot for most IoT deployments is right here — ts=10, q=1/n."*
+> This is your main result. Give it the full 2.5 minutes.
+
+---
+
+#### Slide 08 — O3: On-Demand Sleep vs Duty-Cycling `⏱ 10:30 – 11:30` · 1 min
+
+- Duty-cycling: node wakes on a fixed periodic schedule regardless of arrivals
+- On-demand sleep: only wakes when a packet actually arrives
+- Simulation confirms: **on-demand saves 20–40% more energy** at equivalent delay
+- On-demand dominates duty-cycling across all tested ts and awake-fraction values
+
+> **Speaker note:** Use `slide09_duty_cycle_comparison.png`.
+> Say: *"this isn't just a claim from the paper — we simulated both schemes under
+> identical conditions and on-demand wins every time."*
+> One concise slide, don't linger — 60 seconds and move on.
+
+---
+
+#### Slide 09 — O4: 3GPP Validation & Design Guidelines `⏱ 11:30 – 13:00` · 1 min 30 s
+
+- 3GPP mapping: MICO mode → on-demand · T3324 → ts · PSM → sleep · RA-SDT → tw
+- 4 standard scenarios tested: NB-IoT (2s & 60s T3324) + 5G NR mMTC (2-step & 4-step RA-SDT)
+- Simulated p, μ, T̄, L̄ all within **±5%** of Wang et al. analytical formulas
+- Convergence: error < 5% at 10⁵ slots, stable by 10⁶ slots
+- **Design guideline table:** recommended ts & q* for each traffic load λ
+
+> **Speaker note:** Left panel: use `slide10_formula_validation.png` (analytical vs simulated bars).
+> Right panel: paste the design guideline table as a Canva table element
+> (generated by `DesignGuidelines.print_guideline_table()` in `o4_validation_demo.ipynb`).
+> Say: *"the simulator is not just a black box — it agrees with theory to within 5%,
+> which means we can trust the design rules it produces."*
 
 ---
 
@@ -156,27 +182,66 @@
 
 ---
 
-#### Slide 11 — Key Findings & Conclusion `⏱ 13:00 – 14:30`
+#### Slide 10 — Key Findings `⏱ 13:00 – 14:10` · 1 min 10 s
 
-- ✅ Simulator faithfully reproduces analytical results from Wang et al.
-- ✅ On-demand sleep outperforms duty-cycling by up to 40% in energy
-- ✅ q* = 1/n is a robust design rule across traffic loads
-- ✅ T3324 (ts) is the dominant knob: small ts → low latency, large ts → long life
-- ✅ All 4 objectives (O1–O4) fully complete
-- Future: heterogeneous nodes, capture effect, multi-channel extension
+- ✅ Simulator reproduces Wang et al. analytical results within ±5%
+- ✅ On-demand sleep outperforms duty-cycling by 20–40% in energy
+- ✅ **q* = 1/n** is a robust, near-optimal design rule
+- ✅ **ts is the dominant knob** — small ts for latency, large ts for lifetime
+- ✅ All 4 objectives (O1–O4) fully completed
+- 🔜 Future: heterogeneous nodes, capture effect, multi-channel
 
-> **Speaker note:** Use big checkmarks/icons per point. Keep future work to 1 bullet — don't open new questions. End with your "so what": this gives operators a concrete tuning guide.
+> **Speaker note:** Use big tick icons in Canva for each bullet — make it feel like a checklist.
+> End on: *"The bottom line is that operators can now pick a T3324 timer value from
+> a table and know exactly what delay and lifetime they'll get."*
+> Future work: one bullet only — don't open questions you can't answer.
 
 ---
 
-#### Slide 12 — Thank You & Q&A `⏱ 14:30 – 15:00`
+#### Slide 11 — Thank You & Q&A `⏱ 14:10 – 15:00` · 50 s
 
 - Project title + your name
-- GitHub repo / notebook link (QR code if you have it)
-- One memorable takeaway sentence
-- Leave the Pareto frontier plot visible in background
+- Leave `slide09_pareto_frontier.png` visible as background
+- One memorable sentence (see speaker note)
+- GitHub / notebook link · QR code if available
 
-> **Speaker note:** "The simulator shows that with a T3324 timer of just 10 slots and q = 1/n, IoT devices can achieve sub-second latency while lasting over 2 years on a single AA battery."
+> **Speaker note:** Closing line: *"With a T3324 timer of 10 slots and q = 1/n,
+> IoT devices achieve sub-second access delay while lasting over 2 years on a single AA battery —
+> and now we have a simulator to prove it."*
+
+---
+
+## Diagram Reference
+
+| Slide | File in `ppt/diagrams/` | Where to place |
+|-------|------------------------|----------------|
+| 02 | `slide03_tradeoff_ts_scatter.png` | Right panel background / motivating image |
+| 03 | `slide05_power_profiles.png` | Right panel |
+| 04 | `slide06_timeseries.png` | Right panel |
+| 04 | `slide06_state_energy_pies.png` | Optional inset or backup slide |
+| 05 | `slide07_q_sweep.png` | Left half |
+| 05 | `slide07_ts_sweep.png` | Right half |
+| 06 | `slide08_scenario_comparison.png` | Right panel (crop the scatter sub-panel) |
+| 07 | `slide09_pareto_frontier.png` | Right panel — **LARGE** |
+| 07 | `slide09_heatmaps.png` | Small inset bottom-left |
+| 08 | `slide09_duty_cycle_comparison.png` | Right panel |
+| 09 | `slide10_formula_validation.png` | Left panel |
+| 09 | `slide10_3gpp_scenarios.png` | Right panel |
+| 10 | `slide10_publication_summary.png` | Optional backup slide |
+
+> **Backup slide (keep hidden):** `slide10_publication_summary.png` — the 6-panel dashboard.
+> Show only if an assessor asks a deep methods question during Q&A.
+
+---
+
+## Timing Safety Rules
+
+| Situation | Action |
+|-----------|--------|
+| Running 1 min long at slide 06 | Skip the scenario table on slide 06, go straight to slide 07 |
+| Running 2 min long at slide 07 | Cut duty-cycling slide (08) — mention it in one sentence |
+| Running short with 2 min left | Expand slide 07 — walk through the heatmap in detail |
+| Assessor asks about validation | Pull up backup slide (`slide10_publication_summary.png`) |
 
 ---
 
@@ -187,50 +252,31 @@
 | Role | Hex | Used for |
 |------|-----|----------|
 | Background | `#0f1117` | Dark theme (or swap to white) |
-| Accent 1 | `#6c63ff` | O1 / framework slides |
+| Accent 1 | `#6c63ff` | O1 / framework |
 | Accent 2 | `#00d4ff` | System model |
-| Accent 3 | `#06d6a0` | Results / O2 |
-| Accent 4 | `#ffd166` | Parameters / O2 |
-| Accent 5 | `#ff6b6b` | Validation / O4 |
+| Accent 3 | `#06d6a0` | O2 results |
+| Accent 4 | `#ffd166` | O2 parameters |
+| Accent 5 | `#ff6b6b` | O4 validation |
+| Hero | `#a78bfa` | O3 Pareto slides |
 
 ### Slide Layout
 
-- Use 16:9 widescreen (1920×1080)
-- Left panel: title + 3–4 bullets (40%)
-- Right panel: plot / diagram (60%)
-- Every content slide needs a visual — no text-only slides
-- Use consistent section colour strips at the top
+- 16:9 widescreen (1920×1080)
+- Left panel: title + 3–4 bullets (40%) · Right panel: diagram (60%)
+- Section colour strip at top (4 px bar matching accent colour)
+- Every content slide needs one diagram — no text-only slides
+- Max 4 bullets per slide — use fragments not sentences
 
 ### Typography
 
-- Title: 36–40 pt, bold (e.g. Montserrat Bold)
-- Body bullets: 18–20 pt (no smaller)
-- Speaker cue text: 12 pt, light grey, italic
-- Max 4–5 bullets per slide
-- Avoid full sentences — use fragments
-
-### Key Visuals to Include
-
-| Slide | Visual |
-|-------|--------|
-| 04 | State machine (4 circles + arrows) |
-| 07 | Lifetime vs q & Delay vs ts line charts (side by side) |
-| 08 | 3-point scatter — Pareto scenarios |
-| 09 | Pareto frontier curve **(hero chart — make it large)** |
-| 10 | Analytical vs simulated comparison bar |
+- Slide title: Montserrat Bold 36–40 pt
+- Body bullets: 18–20 pt (never smaller)
+- Diagram captions: 11–12 pt, muted grey
+- Speaker notes in Canva Presenter view: 12 pt italic
 
 ### Canva Shortcuts
 
-- Use **Presenter view** to store speaker notes per slide
-- Smart mockup: paste notebook plots directly as PNG into frames
-- Use grid/frame elements for consistent plot placeholders
-- Brand kit: save your 5 accent colours for one-click reuse
-- Export as **PDF** for submission + **PPTX** as backup
-
-### Timing Guidance
-
-- Practice aloud — 15 min is tight
-- If running long: cut Slide 08 (scenarios detail)
-- If running short: expand Slide 09 Pareto results
-- Leave 2 min for Q&A buffer if your slot allows
-- Have 1 backup slide ready: the guideline table from O4
+- **Presenter view** stores your speaker notes per slide
+- Paste PNGs from `ppt/diagrams/` directly into frame elements
+- Brand kit: save the 7 accent colours above for one-click reuse
+- Export: **PDF** for submission · **PPTX** as backup

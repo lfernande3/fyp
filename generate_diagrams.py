@@ -26,6 +26,7 @@ Slide 10  slide10_3gpp_scenarios.png
 
 import os
 import sys
+import time
 import warnings
 
 # ── Paths ────────────────────────────────────────────────────────────────────
@@ -40,6 +41,7 @@ matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import matplotlib.gridspec as GridSpec
 import numpy as np
+from scipy.interpolate import PchipInterpolator
 import warnings
 warnings.filterwarnings('ignore')
 
@@ -74,15 +76,52 @@ def save(fig, name):
     plt.close(fig)
     print(f'  [OK]  {name}')
 
+TOTAL_SECTIONS = 7
+_section_idx = 0
+_run_start = time.time()
+_prev_section_start = _run_start
+
+def _fmt_time(seconds):
+    m, s = divmod(int(seconds), 60)
+    h, m = divmod(m, 60)
+    return f'{h}h {m:02d}m {s:02d}s' if h else f'{m}m {s:02d}s'
+
 def section(title):
-    print(f'\n{"-"*60}\n  {title}\n{"-"*60}')
+    global _section_idx, _prev_section_start
+    now = time.time()
+    elapsed = now - _run_start
+    if _section_idx > 0:
+        prev_dur = now - _prev_section_start
+        print(f'  (previous section took {_fmt_time(prev_dur)})')
+    _prev_section_start = now
+    _section_idx += 1
+    if _section_idx > 1:
+        avg_per_section = elapsed / (_section_idx - 1)
+        remaining = avg_per_section * (TOTAL_SECTIONS - _section_idx + 1)
+        eta_str = f'  ~{_fmt_time(remaining)} remaining'
+    else:
+        eta_str = ''
+    print(f'\n{"-"*60}')
+    print(f'  [{_section_idx}/{TOTAL_SECTIONS}] {title}')
+    print(f'  Elapsed: {_fmt_time(elapsed)}{eta_str}')
+    print(f'{"-"*60}')
 
 # ── Shared configs (quick mode — increase N_REPS / MAX_SLOTS for final run) ──
-QUICK      = False
-N_REPS     = 5  if QUICK else 20
-MAX_SLOTS  = 30_000 if QUICK else 80_000
-N_NODES    = 20
-LAMBDA     = 0.01
+QUICK          = False
+N_REPS         = 5  if QUICK else 3
+MAX_SLOTS      = 30_000 if QUICK else 5_000
+N_NODES        = 10
+LAMBDA         = 0.01
+INITIAL_ENERGY = 200_000
+POINT_REDUCTION_FACTOR = 10
+
+Q_POINTS_03  = max(5, 50 // POINT_REDUCTION_FACTOR)
+Q_POINTS_07  = max(5, 50 // POINT_REDUCTION_FACTOR)
+TS_POINTS_07 = max(3, 15 // POINT_REDUCTION_FACTOR)
+Q_POINTS_OPT = max(3, 25 // POINT_REDUCTION_FACTOR)
+Q_POINTS_2D  = max(3, 12 // POINT_REDUCTION_FACTOR)
+DC_POINTS    = max(3, 8 // POINT_REDUCTION_FACTOR)
+LAM_POINTS   = max(3, 12 // POINT_REDUCTION_FACTOR)
 
 base_config = SimulationConfig(
     n_nodes=N_NODES,
@@ -90,7 +129,7 @@ base_config = SimulationConfig(
     transmission_prob=0.05,
     idle_timer=10,
     wakeup_time=5,
-    initial_energy=5_000,
+    initial_energy=INITIAL_ENERGY,
     power_rates=PowerModel.get_profile(PowerProfile.GENERIC_LOW),
     max_slots=MAX_SLOTS,
     seed=None,
@@ -100,88 +139,107 @@ print(f'Output directory : {OUT}')
 print(f'Quick mode       : {QUICK}  (set QUICK=False for publication quality)')
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# SLIDE 03  –  Lifetime vs delay CURVES for each ts (q swept per ts)
+# SLIDE 03  –  Lifetime vs delay CURVES  (ts swept per q)
+#
+# Physical insight: ts (idle timer) is the natural "knob" for the delay-lifetime
+# tradeoff in on-demand sleep devices:
+#   - Small ts  → node sleeps quickly after delivery → wakeup needed for next
+#     packet → higher access delay, but mostly in sleep (low energy) → long life
+#   - Large ts  → node stays idle monitoring → next packet starts service
+#     immediately (no wakeup penalty) → lower delay, but idle energy is paid
+#     continuously → shorter life
+#
+# For this effect to be visible the queue must empty between arrivals, which
+# requires light load: lambda_03 << 1/n so nodes sleep between packets.
+# With lambda=0.001 per node, inter-arrival ~1000 slots >> ts=[1..500].
+# initial_energy is set lower so lifetimes land in the 1–10 year range.
 # ═══════════════════════════════════════════════════════════════════════════════
-section('SLIDE 03 – Tradeoff curves (q swept per ts)')
+section('SLIDE 03 – Tradeoff curves (ts swept per q)')
 
-ts_values_03 = [1, 5, 10, 20, 50] if not QUICK else [1, 10, 50]
-q_values_03  = list(np.linspace(0.01, 0.35, 15 if not QUICK else 6))
+LAMBDA_03         = 0.001    # very light load: queue always clears, ts fires every cycle
+INITIAL_ENERGY_03 = 100_000  # 100 Wh battery → lifetimes in 2–11 year range at this load
+SLOTS_03          = 50_000   # 50 packets/node/run at lambda=0.001 → stable rate estimate
+N_REPS_03         = 5
+q_curves_03       = [0.05, 0.15, 0.35]           # 3 fixed q values → 3 distinct curves
+ts_sweep_03       = [1, 20, 100, 500, 2000]       # idle timer values swept per curve
 
-# palette matching slide10 style (one colour per ts)
-palette_03 = plt.cm.viridis(np.linspace(0.1, 0.9, len(ts_values_03)))
+palette_03 = plt.cm.plasma(np.linspace(0.15, 0.85, len(q_curves_03)))
 
-print(f'Sweeping q={[round(q,3) for q in q_values_03]} for each ts={ts_values_03} ...')
+print(f'Sweeping ts={ts_sweep_03} for each q={q_curves_03} ...')
+print(f'  (lambda={LAMBDA_03}, slots={SLOTS_03:,}, reps={N_REPS_03}, E0={INITIAL_ENERGY_03:,} mWh)')
 
-# collect (delay, lifetime) curves — one per ts
 curves = {}
-for ts in ts_values_03:
-    cfg_ts = SimulationConfig(
-        n_nodes=base_config.n_nodes,
-        arrival_rate=base_config.arrival_rate,
-        transmission_prob=base_config.transmission_prob,
-        idle_timer=ts,
-        wakeup_time=base_config.wakeup_time,
-        initial_energy=base_config.initial_energy,
+for q_val in q_curves_03:
+    cfg_q = SimulationConfig(
+        n_nodes=N_NODES,
+        arrival_rate=LAMBDA_03,
+        transmission_prob=q_val,
+        idle_timer=1,                           # overridden by sweep below
+        wakeup_time=50,   # 300 ms → wakeup avoided at high ts gives 20-slot delay spread
+        initial_energy=INITIAL_ENERGY_03,
         power_rates=base_config.power_rates,
-        max_slots=base_config.max_slots,
+        max_slots=SLOTS_03,
         seed=None,
     )
-    res = ParameterSweep.sweep_transmission_prob(
-        cfg_ts, q_values=q_values_03,
-        n_replications=N_REPS, verbose=False,
-    )
-    analysis = ParameterSweep.analyze_sweep_results(res, 'q')
-    delays    = [analysis[q]['mean_delay'][0]      for q in q_values_03]
-    lifetimes = [analysis[q]['lifetime_years'][0]  for q in q_values_03]
-    curves[ts] = (delays, lifetimes, q_values_03)
-    print(f'  ts={ts:>3}: delay range [{min(delays):.1f}, {max(delays):.1f}] slots  '
+    res      = ParameterSweep.sweep_idle_timer(cfg_q, ts_values=ts_sweep_03,
+                                               n_replications=N_REPS_03, verbose=False)
+    analysis = ParameterSweep.analyze_sweep_results(res, 'ts')
+    delays    = [analysis[ts]['mean_delay'][0]     for ts in ts_sweep_03]
+    lifetimes = [analysis[ts]['lifetime_years'][0] for ts in ts_sweep_03]
+    curves[q_val] = (delays, lifetimes, ts_sweep_03)
+    print(f'  q={q_val:.2f}: delay range [{min(delays):.1f}, {max(delays):.1f}] slots  '
           f'lifetime range [{min(lifetimes):.4f}, {max(lifetimes):.4f}] years')
 
 # ── build the plot ────────────────────────────────────────────────────────────
 fig, ax = plt.subplots(figsize=(11, 7))
 
-for i, (ts, (delays, lifetimes, qs)) in enumerate(curves.items()):
+for i, (q_val, (delays, lifetimes, ts_vals)) in enumerate(curves.items()):
     colour = palette_03[i]
 
-    # sort by delay so the line flows left-to-right
+    # sort by delay ascending so the line flows left→right
     order     = np.argsort(delays)
     d_sorted  = np.array(delays)[order]
     lt_sorted = np.array(lifetimes)[order]
-    q_sorted  = np.array(qs)[order]
+    ts_sorted = np.array(ts_vals)[order]
 
-    # trend-line via degree-2 polynomial fit
-    if len(d_sorted) >= 3:
-        coeffs   = np.polyfit(d_sorted, lt_sorted, 2)
-        d_smooth = np.linspace(d_sorted.min(), d_sorted.max(), 200)
-        lt_smooth = np.polyval(coeffs, d_smooth)
+    # PchipInterpolator requires strictly increasing x; nudge any ties caused by noise
+    d_plot = d_sorted.astype(float).copy()
+    for k in range(1, len(d_plot)):
+        if d_plot[k] <= d_plot[k - 1]:
+            d_plot[k] = d_plot[k - 1] + 1e-3
+
+    # monotonic cubic interpolation through sorted data
+    if len(d_plot) >= 3:
+        pchip     = PchipInterpolator(d_plot, lt_sorted)
+        d_smooth  = np.linspace(d_plot.min(), d_plot.max(), 200)
+        lt_smooth = pchip(d_smooth)
         ax.plot(d_smooth, lt_smooth, '-', color=colour, linewidth=2, alpha=0.7)
 
     # actual data points
-    sc = ax.scatter(d_sorted, lt_sorted, s=70, color=colour,
-                    edgecolors='white', linewidths=0.8, zorder=5,
-                    label=f'ts = {ts}')
+    ax.scatter(d_sorted, lt_sorted, s=70, color=colour,
+               edgecolors='white', linewidths=0.8, zorder=5,
+               label=f'q = {q_val:.2f}')
 
-    # annotate the lowest-q (highest-delay) and highest-q (lowest-delay) ends
-    ax.annotate(f'q={q_sorted[0]:.2f}',
-                (d_sorted[0], lt_sorted[0]),
-                xytext=(-30, 6), textcoords='offset points',
-                fontsize=7.5, color=colour, arrowprops=dict(arrowstyle='-', color=colour, lw=0.8))
-    ax.annotate(f'q={q_sorted[-1]:.2f}',
+    # annotate ts endpoints
+    ax.annotate(f'ts={ts_sorted[-1]}',
                 (d_sorted[-1], lt_sorted[-1]),
-                xytext=(6, -14), textcoords='offset points',
-                fontsize=7.5, color=colour, arrowprops=dict(arrowstyle='-', color=colour, lw=0.8))
+                xytext=(6, 4), textcoords='offset points',
+                fontsize=7.5, color=colour)
+    ax.annotate(f'ts={ts_sorted[0]}',
+                (d_sorted[0], lt_sorted[0]),
+                xytext=(-45, -14), textcoords='offset points',
+                fontsize=7.5, color=colour)
 
 ax.set_xlabel('Mean Access Delay (slots)', fontsize=12)
 ax.set_ylabel('Mean Battery Lifetime (years)', fontsize=12)
 ax.set_title('Battery Lifetime vs Access Delay\n'
-             'Each curve = one ts value, swept over q  '
-             r'(↑q → lower delay, shorter life)',
+             r'Each curve = one $q$ value, swept over $t_s$'
+             '  (larger ts → lower delay, shorter life)',
              fontsize=13)
-ax.legend(title='Idle Timer ts', fontsize=10, title_fontsize=10,
+ax.legend(title='Tx probability q', fontsize=10, title_fontsize=10,
           framealpha=0.9, loc='upper right')
 ax.grid(True, alpha=0.3)
 
-# shade region labels
 ax.text(0.04, 0.92, 'High lifetime\n(battery priority)',
         transform=ax.transAxes, fontsize=9, color='#2d6a4f',
         va='top', ha='left',
@@ -237,7 +295,7 @@ section('SLIDE 06 – Framework: time-series & pies')
 
 cfg_06 = SimulationConfig(
     n_nodes=10, arrival_rate=0.01, transmission_prob=0.1,
-    idle_timer=10, wakeup_time=5, initial_energy=5_000,
+    idle_timer=10, wakeup_time=5, initial_energy=INITIAL_ENERGY,
     power_rates={'PT': 10.0, 'PB': 5.0, 'PI': 1.0, 'PW': 2.0, 'PS': 0.1},
     max_slots=10_000, seed=42,
 )
@@ -294,7 +352,7 @@ save(fig, 'slide06_state_energy_pies.png')
 # ═══════════════════════════════════════════════════════════════════════════════
 section('SLIDE 07 – Parameter sweeps (q and ts)')
 
-q_values_07 = [0.01, 0.02, 0.05, 0.1, 0.15, 0.2, 0.3] if not QUICK else [0.01, 0.05, 0.1, 0.2, 0.3]
+q_values_07 = list(np.linspace(0.005, 0.38, Q_POINTS_07)) if not QUICK else [0.01, 0.05, 0.1, 0.2, 0.3]
 print(f'Sweeping q = {q_values_07} ...')
 q_results_07 = ParameterSweep.sweep_transmission_prob(
     base_config, q_values=q_values_07,
@@ -333,19 +391,28 @@ ax4.set_xlabel('Transmission Probability (q)'); ax4.set_ylabel('Throughput (pkts
 ax4.set_title('Throughput vs q'); ax4.grid(True, alpha=0.3)
 
 ax5 = fig.add_subplot(gs[1, 1])
-sc = ax5.scatter(q_delays, q_lifetimes, s=200, c=q_arr, cmap='viridis', edgecolor='black', linewidth=1.5)
+sc = ax5.scatter(q_delays, q_lifetimes, s=60, c=q_arr, cmap='viridis', edgecolor='black', linewidth=0.8)
+# annotate only key q values: min, q≈1/n, max, and one mid point
+key_qs = {q_values_07[0], q_values_07[-1]}
+qstar  = min(q_values_07, key=lambda q: abs(q - 1.0/N_NODES))
+key_qs.add(qstar)
+key_qs.add(q_values_07[len(q_values_07)//2])
 for i, q in enumerate(q_values_07):
-    ax5.annotate(f'q={q}', (q_delays[i], q_lifetimes[i]),
-                 xytext=(7, 7), textcoords='offset points', fontsize=9)
+    if q in key_qs:
+        lbl = f'q*=1/n' if abs(q - qstar) < 1e-6 else f'q={q:.2f}'
+        ax5.annotate(lbl, (q_delays[i], q_lifetimes[i]),
+                     xytext=(7, 7), textcoords='offset points', fontsize=8,
+                     arrowprops=dict(arrowstyle='-', lw=0.6))
 ax5.set_xlabel('Mean Delay (slots)'); ax5.set_ylabel('Mean Lifetime (hours)')
 ax5.set_title('Lifetime–Delay Trade-off'); ax5.grid(True, alpha=0.3)
 plt.colorbar(sc, ax=ax5, label='q')
 
 ax6 = fig.add_subplot(gs[1, 2])
 ax6.axis('off')
-tdata = [['Metric', 'q=0.01', 'q≈1/n', 'q=0.3'],
-         ['Delay',    f'{q_delays[0]:.0f} sl', f'{q_delays[2]:.0f} sl', f'{q_delays[-1]:.0f} sl'],
-         ['Lifetime', f'{q_lifetimes[0]:.0f} h', f'{q_lifetimes[2]:.0f} h', f'{q_lifetimes[-1]:.0f} h']]
+qstar_idx = min(range(len(q_values_07)), key=lambda i: abs(q_values_07[i] - 1.0/N_NODES))
+tdata = [['Metric', f'q={q_values_07[0]:.3f}', f'q*={q_values_07[qstar_idx]:.3f}', f'q={q_values_07[-1]:.3f}'],
+         ['Delay',    f'{q_delays[0]:.0f} sl', f'{q_delays[qstar_idx]:.0f} sl', f'{q_delays[-1]:.0f} sl'],
+         ['Lifetime', f'{q_lifetimes[0]:.0f} h', f'{q_lifetimes[qstar_idx]:.0f} h', f'{q_lifetimes[-1]:.0f} h']]
 tbl = ax6.table(cellText=tdata, cellLoc='center', loc='center',
                 colWidths=[0.3, 0.23, 0.23, 0.23])
 tbl.auto_set_font_size(False); tbl.set_fontsize(11); tbl.scale(1, 2.2)
@@ -357,7 +424,7 @@ fig.suptitle('Parameter Sweep: Transmission Probability q\n(n=20, λ=0.01, ts=10
 save(fig, 'slide07_q_sweep.png')
 
 # ts sweep ----
-ts_values_07 = [1, 2, 5, 10, 20, 50, 100] if not QUICK else [1, 5, 10, 50]
+ts_values_07 = list(map(int, np.unique(np.round(np.geomspace(1, 100, TS_POINTS_07))))) if not QUICK else [1, 5, 10, 50]
 print(f'Sweeping ts = {ts_values_07} ...')
 ts_results_07 = ParameterSweep.sweep_idle_timer(
     base_config, ts_values=ts_values_07,
@@ -384,14 +451,17 @@ axes[1, 0].semilogx(ts_arr, ts_energy, marker='^', linewidth=2, markersize=8, co
 axes[1, 0].set_xlabel('Idle Timer ts (log scale)'); axes[1, 0].set_ylabel('Energy per Packet')
 axes[1, 0].set_title('Energy Efficiency vs ts'); axes[1, 0].grid(True, alpha=0.3)
 
-sc2 = axes[1, 1].scatter(ts_delays, ts_lifetimes, s=200, c=np.log10(ts_arr),
-                          cmap='plasma', edgecolor='black', linewidth=1.5)
-for i, ts in enumerate(ts_values_07):
-    axes[1, 1].annotate(f'ts={ts}', (ts_delays[i], ts_lifetimes[i]),
-                        xytext=(7, 7), textcoords='offset points', fontsize=9)
+sc2 = axes[1, 1].scatter(ts_delays, ts_lifetimes, s=60, c=np.log10(ts_arr),
+                          cmap='plasma', edgecolor='black', linewidth=0.8)
+# label only a handful of key ts values (first, last, and ~4 evenly spaced)
+key_idx = sorted(set([0, len(ts_values_07)-1] + list(range(0, len(ts_values_07), max(1, len(ts_values_07)//5)))))
+for i in key_idx:
+    axes[1, 1].annotate(f'ts={ts_values_07[i]}', (ts_delays[i], ts_lifetimes[i]),
+                        xytext=(7, 7), textcoords='offset points', fontsize=8,
+                        arrowprops=dict(arrowstyle='-', lw=0.6))
 axes[1, 1].set_xlabel('Mean Delay (slots)'); axes[1, 1].set_ylabel('Mean Lifetime (hours)')
 axes[1, 1].set_title('Lifetime–Delay Trade-off (ts)'); axes[1, 1].grid(True, alpha=0.3)
-plt.colorbar(sc2, ax=axes[1, 1], label='log₁₀(ts)')
+plt.colorbar(sc2, ax=axes[1, 1], label='log10(ts)')
 
 fig.suptitle('Parameter Sweep: Idle Timer ts\n(n=20, λ=0.01, q=0.05)', fontsize=14)
 plt.tight_layout()
@@ -469,13 +539,13 @@ section('SLIDE 09 – Optimisation: Pareto + heatmaps + duty-cycle')
 cfg_o3 = SimulationConfig(
     n_nodes=N_NODES, arrival_rate=LAMBDA,
     transmission_prob=0.05, idle_timer=10, wakeup_time=5,
-    initial_energy=5_000,
+    initial_energy=INITIAL_ENERGY,
     power_rates=PowerModel.get_profile(PowerProfile.GENERIC_LOW),
     max_slots=MAX_SLOTS, seed=None,
 )
 
-q_opt   = list(np.linspace(0.01, 0.40, 8 if QUICK else 15))
-ts_opt  = [1, 10, 50] if QUICK else [1, 5, 10, 20, 50]
+q_opt   = list(np.linspace(0.005, 0.40, 8 if QUICK else Q_POINTS_OPT))
+ts_opt  = [1, 10, 50] if QUICK else [1, 3, 5, 10, 20, 50]
 
 print('Running Pareto tradeoff analysis ...')
 tradeoff_pts = ParameterOptimizer.tradeoff_analysis(
@@ -490,8 +560,8 @@ fig, ax = OptimizationVisualizer.plot_pareto_frontier(
 save(fig, 'slide09_pareto_frontier.png')
 
 print('Running 2-D grid search (q × ts) ...')
-q_2d  = [0.01, 0.05, 0.10, 0.20, 0.30]
-ts_2d = [1, 10, 50]
+q_2d  = list(np.linspace(0.005, 0.38, Q_POINTS_2D))
+ts_2d = [1, 5, 10, 20, 50]
 grid  = ParameterOptimizer.grid_search_q_ts(
     cfg_o3, q_values=q_2d, ts_values=ts_2d,
     n_replications=max(N_REPS - 2, 3), verbose=False,
@@ -506,7 +576,7 @@ plt.tight_layout()
 save(fig, 'slide09_heatmaps.png')
 
 print('Running duty-cycle comparison ...')
-fracs_dc = [0.1, 0.3, 0.7] if QUICK else [0.1, 0.2, 0.3, 0.5, 0.7]
+fracs_dc = [0.1, 0.3, 0.7] if QUICK else list(np.linspace(0.05, 0.80, DC_POINTS))
 dc_comparison = DutyCycleSimulator.compare_with_on_demand(
     cfg_o3, ts_values=ts_opt, awake_fractions=fracs_dc,
     cycle_period=20, n_replications=N_REPS, verbose=False,
@@ -525,7 +595,7 @@ section('SLIDE 10 – 3GPP Validation')
 print('Running 3GPP standard scenarios ...')
 scenarios_3gpp = ThreeGPPAlignment.create_standard_scenarios(
     n_nodes=N_NODES, arrival_rate=LAMBDA,
-    initial_energy=5_000, max_slots=MAX_SLOTS,
+    initial_energy=INITIAL_ENERGY, max_slots=MAX_SLOTS,
 )
 scenario_results_3gpp = {}
 for sc in scenarios_3gpp:
@@ -546,7 +616,7 @@ fig, ax = ValidationVisualizer.plot_3gpp_scenario_comparison(
 save(fig, 'slide10_3gpp_scenarios.png')
 
 print('Running formula validation across n ...')
-n_vals_v = [5, 10, 20] if QUICK else [5, 10, 20, 50]
+n_vals_v = [5, 10, 20] if QUICK else [5, 8, 10, 15, 20, 30, 50]
 val_reports = AnalyticsValidator.validate_across_n(
     n_values=n_vals_v, q_per_n=True,
     lambda_rate=0.005, tw=2, ts=10,
@@ -567,11 +637,11 @@ print('Running convergence analysis ...')
 base_cfg_conv = SimulationConfig(
     n_nodes=10, arrival_rate=0.005,
     transmission_prob=0.1, idle_timer=10, wakeup_time=2,
-    initial_energy=5_000,
+    initial_energy=INITIAL_ENERGY,
     power_rates=PowerModel.get_profile(PowerProfile.GENERIC_LOW),
     max_slots=50_000, seed=None,
 )
-slot_counts = [5_000, 20_000, 50_000] if QUICK else [5_000, 10_000, 30_000, 60_000, 100_000]
+slot_counts = [5_000, 20_000, 50_000] if QUICK else [1_000, 3_000, 5_000, 10_000, 20_000, 40_000, 80_000, 150_000]
 conv_reports = AnalyticsValidator.validate_convergence(
     base_cfg_conv, slot_counts=slot_counts,
     n_replications=N_REPS, verbose=False,
@@ -584,8 +654,8 @@ plt.tight_layout()
 save(fig, 'slide10_convergence.png')
 
 print('Running lifetime vs lambda sweep (for publication summary) ...')
-ts_pub   = [1, 10, 50]
-lam_pub  = [0.001, 0.01, 0.05] if QUICK else [0.001, 0.005, 0.01, 0.02, 0.05]
+ts_pub   = [1, 5, 10, 20, 50]
+lam_pub  = [0.001, 0.01, 0.05] if QUICK else list(np.linspace(0.001, 0.05, LAM_POINTS))
 lt_data  = DesignGuidelines.lifetime_vs_lambda(
     ts_values=ts_pub, lambda_values=lam_pub,
     n=N_NODES, tw=2, power_profile=PowerProfile.NR_MMTC,
@@ -607,10 +677,12 @@ save(fig, 'slide10_publication_summary.png')
 # ═══════════════════════════════════════════════════════════════════════════════
 # Done
 # ═══════════════════════════════════════════════════════════════════════════════
+total_elapsed = time.time() - _run_start
 saved = sorted(os.listdir(OUT))
 print(f'\n{"="*60}')
 print(f'  All done!  {len(saved)} files saved to:')
 print(f'  {OUT}')
+print(f'  Total time: {_fmt_time(total_elapsed)}')
 print(f'{"="*60}')
 for f in saved:
     print(f'  - {f}')

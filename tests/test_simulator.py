@@ -158,7 +158,7 @@ def test_energy_depletion():
     print("\nTesting energy depletion...")
     
     config = get_default_config(max_slots=100000)
-    config.initial_energy = 100.0  # Very low energy
+    config.initial_energy = 0.01  # Very low energy (mWh) to ensure depletion
     config.arrival_rate = 0.1       # High arrival rate
     config.transmission_prob = 0.2  # High transmission
     config.stop_on_first_depletion = True

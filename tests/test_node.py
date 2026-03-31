@@ -15,7 +15,7 @@ import sys
 import os
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-from src.node import Node, NodeState
+from src.node import Node, NodeState, _SLOT_DURATION_H
 import random
 
 
@@ -132,30 +132,31 @@ def test_energy_consumption():
     
     node = Node(1, 1000.0, 10, 5, power_rates)
     initial_energy = node.energy
+    h = _SLOT_DURATION_H  # power (mW) × h → energy (mWh)
     
     # Test IDLE energy consumption
     node.state = NodeState.IDLE
     consumed = node.consume_energy(was_transmitting=False, was_collision=False)
-    assert consumed == 1.0  # PI
-    assert node.energy == initial_energy - 1.0
+    assert abs(consumed - 1.0 * h) < 1e-18  # PI
+    assert abs(node.energy - (initial_energy - 1.0 * h)) < 1e-18
     
     # Test SLEEP energy consumption
     node.state = NodeState.SLEEP
     consumed = node.consume_energy()
-    assert consumed == 0.1  # PS
-    assert node.energy == initial_energy - 1.1
+    assert abs(consumed - 0.1 * h) < 1e-18  # PS
+    assert abs(node.energy - (initial_energy - 1.1 * h)) < 1e-18
     
     # Test TRANSMIT energy consumption
     node.state = NodeState.ACTIVE
     consumed = node.consume_energy(was_transmitting=True)
-    assert consumed == 10.0  # PT
-    assert node.energy == initial_energy - 11.1
+    assert abs(consumed - 10.0 * h) < 1e-18  # PT
+    assert abs(node.energy - (initial_energy - 11.1 * h)) < 1e-18
     
     # Test WAKEUP energy consumption
     node.state = NodeState.WAKEUP
     consumed = node.consume_energy()
-    assert consumed == 2.0  # PW
-    assert node.energy == initial_energy - 13.1
+    assert abs(consumed - 2.0 * h) < 1e-18  # PW
+    assert abs(node.energy - (initial_energy - 13.1 * h)) < 1e-18
     
     print("[PASS] Energy consumption test passed")
 
@@ -268,13 +269,14 @@ def test_energy_depletion():
         'PT': 10.0, 'PB': 5.0, 'PI': 1.0, 'PW': 2.0, 'PS': 0.1
     }
     
-    node = Node(1, 50.0, 10, 5, power_rates)  # Low initial energy
+    h = _SLOT_DURATION_H
+    node = Node(1, 5e-5, 10, 5, power_rates)  # Very low energy (mWh)
     
     assert node.is_depleted() == False
     
-    # Consume energy until depleted
+    # Consume energy until depleted: 6 × PT(10) × h ≈ 1e-4 > 5e-5
     node.state = NodeState.ACTIVE
-    for _ in range(6):  # 6 * 10 = 60 > 50
+    for _ in range(6):
         node.consume_energy(was_transmitting=True)
     
     assert node.energy < 0
