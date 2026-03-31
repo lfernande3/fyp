@@ -16,10 +16,10 @@
 ## Time Distribution
 
 ```
-0    0:20  2:20  3:20   5:00    7:00  8:00    10:30 11:30   13:00 14:10  15:00
-|Title|  Problem &  |System| O1 Sim  | O2 Sweeps |O2 |  O3 Pareto  | O4  |Findings|Q&A|
-|     |  Background |Model | Fwk     |  q & ts   |Scn| + DutyCycle |Val  |        |   |
- 0:20    2:00    1:00   1:40    2:00     1:00   2:30    1:00   1:30   1:10   0:50
+0    0:20  1:20   3:20   5:00    7:00  8:00    10:30 11:30   13:00 14:10  15:00
+|Title|System|  Problem &  | O1 Sim  | O2 Sweeps |O2 |  O3 Pareto  | O4  |Findings|Q&A|
+|     |Model |  Background | Fwk     |  q & ts   |Scn| + DutyCycle |Val  |        |   |
+ 0:20   1:00     2:00   1:40    2:00     1:00   2:30    1:00   1:30   1:10   0:50
 ```
 
 ---
@@ -44,7 +44,20 @@
 
 ---
 
-#### Slide 02 — The Problem & Background `⏱ 0:20 – 2:20` · 2 min
+#### Slide 02 — System Model & Key Parameters `⏱ 0:20 – 1:20` · 1 min
+
+- n nodes (100–10,000), arrival rate λ (Poisson, unsaturated: λ < μ)
+- Power states: PT > PB > PI > PW > PS — slot duration 6 ms (3GPP NR)
+- Key metrics: mean delay T̄, battery lifetime L̄, success prob p, service rate μ
+- Parameters swept: q (0.01–0.5), ts (1–100), n (10–500), λ (0.001–0.1)
+
+> **Speaker note:** Use `slide05_power_profiles.png` as the visual (bar chart on the right).
+> A clean parameter table on the left. Say *"everything feeds into four metrics"* — point at them.
+> This slide is setup, not results — keep it under 60 seconds.
+
+---
+
+#### Slide 03 — The Problem & Background `⏱ 1:20 – 3:20` · 2 min
 
 **Left panel — the tension (motivation):**
 - Billions of battery-powered MTDs send small packets sporadically
@@ -62,20 +75,7 @@
 > **Speaker note:** Draw the state machine on the right half (4 circles + arrows in Canva).
 > On the left, use `slide03_tradeoff_ts_scatter.png` as the motivating image — show it briefly
 > to say *"this is what the trade-off actually looks like."*
-> Keep moving — this slide sets up everything else. Target: off this slide by 2:20.
-
----
-
-#### Slide 03 — System Model & Key Parameters `⏱ 2:20 – 3:20` · 1 min
-
-- n nodes (100–10,000), arrival rate λ (Poisson, unsaturated: λ < μ)
-- Power states: PT > PB > PI > PW > PS — slot duration 6 ms (3GPP NR)
-- Key metrics: mean delay T̄, battery lifetime L̄, success prob p, service rate μ
-- Parameters swept: q (0.01–0.5), ts (1–100), n (10–500), λ (0.001–0.1)
-
-> **Speaker note:** Use `slide05_power_profiles.png` as the visual (bar chart on the right).
-> A clean parameter table on the left. Say *"everything feeds into four metrics"* — point at them.
-> This slide is setup, not results — keep it under 60 seconds.
+> Keep moving — this slide sets up everything else. Target: off this slide by 3:20.
 
 ---
 
@@ -215,8 +215,8 @@
 
 | Slide | File in `ppt/diagrams/` | Where to place |
 |-------|------------------------|----------------|
-| 02 | `slide03_tradeoff_ts_scatter.png` | Right panel background / motivating image |
-| 03 | `slide05_power_profiles.png` | Right panel |
+| 02 | `slide05_power_profiles.png` | Right panel |
+| 03 | `slide03_tradeoff_ts_scatter.png` | Right panel background / motivating image |
 | 04 | `slide06_timeseries.png` | Right panel |
 | 04 | `slide06_state_energy_pies.png` | Optional inset or backup slide |
 | 05 | `slide07_q_sweep.png` | Left half |

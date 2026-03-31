@@ -1,5 +1,7 @@
 # Presentation Speech Script
+
 ## "Sleep-Based Low-Latency Access for M2M Communications"
+
 ### Final Year Project — 15-Minute Presentation
 
 > **Audience:** Three chair professors of the department  
@@ -26,15 +28,35 @@ In IoT networks, every time a sensor wakes up to send a packet, it costs battery
 
 ---
 
-## Slide 02 — The Problem & Background `⏱ 0:20 – 2:20`
+## Slide 02 — System Model & Key Parameters `⏱ 0:20 – 1:20`
+
+`[Gesture to the parameter table on the left.]`
+
+Before I get into the problem, let me ground the model. The system we study has *n* nodes — between 100 and 10,000. Packet arrivals follow a **Poisson process** with rate λ — and we restrict ourselves to the unsaturated regime, where λ is strictly less than the service rate μ, ensuring finite delays.
+
+`[Gesture to the power profile chart on the right.]`
+
+Power consumption follows a strict hierarchy: transmit power is the highest, followed by busy-receive, idle, wakeup, and sleep — corresponding to 3GPP NR values. The slot duration is **6 milliseconds**, consistent with 5G NR mMTC.
+
+The four metrics I track are: **mean delay T-bar, battery lifetime L-bar, success probability p, and service rate μ**.
+
+The parameters I sweep are: transmission probability *q* from 0.01 to 0.5, idle timer *ts* from 1 to 100 slots, population *n* from 10 to 500, and arrival rate λ from 0.001 to 0.1.
+
+Everything feeds into those four metrics — and the tension between them is what makes this problem interesting.
+
+`[Advance to Slide 03 at ~1:20]`
+
+---
+
+## Slide 03 — The Problem & Background `⏱ 1:20 – 3:20`
 
 `[Gesture to the left panel — the motivation.]`
 
-To set the context: we are dealing with networks of **battery-powered Machine-Type Devices** — IoT sensors, smart meters, environmental monitors — numbering in the billions. These devices send small, infrequent packets. They must sleep aggressively just to survive on a coin cell for years.
+Now with the model in mind, the problem becomes sharp. We are dealing with networks of **battery-powered Machine-Type Devices** — IoT sensors, smart meters, environmental monitors — numbering in the billions. These devices send small, infrequent packets. They must sleep aggressively just to survive on a coin cell for years.
 
 But sleeping is precisely what creates the problem. When a node is asleep, it misses its transmission window. The result is **higher access delay** — which is unacceptable in applications like industrial monitoring or emergency alerting.
 
-This is the core tension: **minimise delay requires the node to stay awake; maximise lifetime requires the node to stay asleep.**
+This is the core tension: **minimising delay requires the node to stay awake; maximising lifetime requires the node to stay asleep.**
 
 `[Gesture to the right panel — the state machine.]`
 
@@ -45,26 +67,6 @@ This gives us four states: Active, Idle, Sleep, and Wakeup.
 Critically, this maps directly onto **3GPP standards**: MICO mode corresponds to on-demand sleep, the T3324 timer corresponds to *ts*, and RA-SDT corresponds to the wake-up procedure.
 
 The analytical foundation comes from **Wang et al., 2024** — my supervisor's published work — which derives closed-form expressions for delay and lifetime. My project builds on and validates that analytical framework using simulation.
-
-`[Advance to Slide 03 at ~2:20]`
-
----
-
-## Slide 03 — System Model & Key Parameters `⏱ 2:20 – 3:20`
-
-`[Gesture to the parameter table on the left.]`
-
-The system model follows the Wang et al. setup. We have *n* nodes, between 100 and 10,000. Packet arrivals follow a **Poisson process** with rate λ — and we restrict ourselves to the unsaturated regime, where λ is strictly less than the service rate μ, ensuring finite delays.
-
-`[Gesture to the power profile chart on the right.]`
-
-Power consumption follows a strict hierarchy: transmit power is the highest, followed by busy-receive, idle, wakeup, and sleep — corresponding to 3GPP NR values. The slot duration is **6 milliseconds**, consistent with 5G NR mMTC.
-
-The four metrics I optimise are: **mean delay T-bar, battery lifetime L-bar, success probability p, and service rate μ**.
-
-The parameters I sweep are: transmission probability *q* from 0.01 to 0.5, idle timer *ts* from 1 to 100 slots, population *n* from 10 to 500, and arrival rate λ from 0.001 to 0.1.
-
-Everything feeds into those four metrics.
 
 `[Advance to Slide 04 at ~3:20]`
 
@@ -264,13 +266,15 @@ These are the questions a panel of three chairs is most likely to ask. Have conc
 
 ## Timing Safety Cues
 
-| Situation | Recovery |
-|-----------|----------|
-| Ahead by 1 min at Slide 06 | Expand the scenario comparison — walk through quantified gains vs. baseline |
-| Behind by 1 min at Slide 07 | Cut the heatmap inset explanation; deliver only the three frontier findings |
-| Behind by 2 min at Slide 07 | Skip Slide 08 (duty-cycling); mention it in one sentence: *"On-demand also outperforms duty-cycling by up to 40% — I have a slide on that if it comes up."* |
-| Running short with 2 min left | Expand the Pareto frontier walk-through — trace more points on the frontier |
-| Deep methods question from panel | Pull up backup slide `slide10_publication_summary.png` |
+
+| Situation                        | Recovery                                                                                                                                                    |
+| -------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Ahead by 1 min at Slide 06       | Expand the scenario comparison — walk through quantified gains vs. baseline                                                                                 |
+| Behind by 1 min at Slide 07      | Cut the heatmap inset explanation; deliver only the three frontier findings                                                                                 |
+| Behind by 2 min at Slide 07      | Skip Slide 08 (duty-cycling); mention it in one sentence: *"On-demand also outperforms duty-cycling by up to 40% — I have a slide on that if it comes up."* |
+| Running short with 2 min left    | Expand the Pareto frontier walk-through — trace more points on the frontier                                                                                 |
+| Deep methods question from panel | Pull up backup slide `slide10_publication_summary.png`                                                                                                      |
+
 
 ---
 
