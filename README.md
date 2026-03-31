@@ -1,6 +1,6 @@
 # Sleep-Based Low-Latency Access for M2M Communications Simulator
 
-**Date:** February 10, 2026
+https://canva.link/d2w5bz80pqhx0dj
 
 ## Getting started (after cloning)
 
