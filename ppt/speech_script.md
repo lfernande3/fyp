@@ -15,9 +15,25 @@ In IoT networks, every time a sensor wakes up to send a packet, it costs battery
 
 `[Advance to Slide 02 at ~0:20]`
 
+---## Slide 02 — The Problem & Background `⏱ 1:20 – 3:20`
+
+`[Gesture to the left panel.]`
+
+The challenge is clear. Billions of battery-powered Machine-Type Devices must operate for 5–10 years without maintenance. To achieve this lifetime they must sleep aggressively. Yet sleeping creates access delay since packets arriving during sleep will be buffered and delivered late. This tension is especially critical in mission-critical M2M applications where latency must be orders of magnitude lower than typical human-to-human traffic.
+
+`[next page]`
+
+The scheme I study is **on-demand sleep with slotted Aloha**. An active node transmits its head-of-line packet with probability *q* each slot. Once the buffer is empty, it starts an idle timer of *tₛ* slots. If no new packet arrives by the end of the timer, it enters sleep. Upon the next packet arrival it wakes up, paying a wake-up cost of *tₓ* slots.
+
+This produces four states: Active → Idle → Sleep → Wake-up → Active.
+
+Importantly, this maps directly onto 3GPP standards: MICO mode is on-demand sleep, the T3324 timer corresponds to *tₛ*, and RA-SDT corresponds to the wake-up procedure. The analytical foundation comes from the scheme I study which provides closed-form expressions for delay and lifetime. My project builds the simulation framework to validate and extend those results.
+
+`[Advance to Slide 04 at ~3:20]`
+
 ---
 
-## Slide 02 — System Model & Key Parameters `⏱ 0:20 – 1:20`
+## Slide 03 — System Model & Key Parameters `⏱ 0:20 – 1:20`
 
 `[Gesture to the left side of the slide.]`
 
@@ -33,25 +49,7 @@ The parameters I sweep are transmission probability *q* (0.01 to 0.5), idle time
 
 `[Advance to Slide 03 at ~1:20]`
 
----
 
-## Slide 03 — The Problem & Background `⏱ 1:20 – 3:20`
-
-`[Gesture to the left panel.]`
-
-The challenge is clear. Billions of battery-powered Machine-Type Devices must operate for 5–10 years without maintenance. To achieve this lifetime they must sleep aggressively. Yet sleeping creates access delay since packets arriving during sleep will be buffered and delivered late. This tension is especially critical in mission-critical M2M applications where latency must be orders of magnitude lower than typical human-to-human traffic.
-
-`[Gesture to the state machine on the right.]`
-
-The scheme I study is **on-demand sleep with slotted Aloha**. An active node transmits its head-of-line packet with probability *q* each slot. Once the buffer is empty, it starts an idle timer of *tₛ* slots. If no new packet arrives by the end of the timer, it enters sleep. Upon the next packet arrival it wakes up, paying a wake-up cost of *tₓ* slots.
-
-This produces four states: Active → Idle → Sleep → Wake-up → Active.
-
-Importantly, this maps directly onto 3GPP standards: MICO mode is on-demand sleep, the T3324 timer corresponds to *tₛ*, and RA-SDT corresponds to the wake-up procedure. The analytical foundation comes from the scheme I study which provides closed-form expressions for delay and lifetime. My project builds the simulation framework to validate and extend those results.
-
-`[Advance to Slide 04 at ~3:20]`
-
----
 
 ## Slide 04 — O1: Simulation Framework `⏱ 3:20 – 5:00`
 
