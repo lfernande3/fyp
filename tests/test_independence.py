@@ -242,3 +242,22 @@ class TestVisualizers:
     def test_plot_iso_contours(self):
         fig, axes = IndependenceVisualizer.plot_iso_contours(self.df)
         assert fig is not None
+
+    def test_plot_kappa_vs_outputs(self):
+        fig, axes = IndependenceVisualizer.plot_kappa_vs_outputs(self.df)
+        assert fig is not None
+        assert axes.shape == (2,)
+
+    def test_plot_pareto_surface(self):
+        fig, ax = IndependenceVisualizer.plot_pareto_surface(self.df)
+        assert fig is not None
+
+    def test_plot_delay_lifetime_tradeoff_by_kappa(self):
+        fig, ax = IndependenceVisualizer.plot_delay_lifetime_tradeoff_by_kappa(self.df)
+        assert fig is not None
+
+    def test_plot_marginal_effects(self):
+        fig, axes = IndependenceVisualizer.plot_marginal_effects(
+            self.df, self.analytical
+        )
+        assert fig is not None

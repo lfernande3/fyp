@@ -726,6 +726,313 @@ class IndependenceVisualizer:
         plt.tight_layout()
         return fig, axes
 
+    @staticmethod
+    def plot_kappa_vs_outputs(
+        df: pd.DataFrame,
+        title: str = "Coupling Strength kappa Predicts Both Delay and Lifetime",
+    ) -> Tuple[Any, Any]:
+        """
+        Scatter plots of kappa (= p * ts) vs mean_delay and mean_lifetime.
+
+        A strong correlation confirms kappa is the single quantity that captures
+        the joint effect of q and ts.  Points are coloured by q so the reader
+        can see how the two parameters combine into kappa.
+        """
+        import matplotlib.pyplot as plt
+
+        mask = df["stable"] & df["mean_lifetime"].notna() & (df["mean_lifetime"] > 0)
+        sdf = df[mask].copy()
+
+        fig, axes = plt.subplots(1, 2, figsize=(14, 6))
+
+        # Colour by q (log scale for visibility)
+        q_log = np.log10(sdf["q"].values)
+        q_norm = (q_log - q_log.min()) / (q_log.max() - q_log.min() + 1e-12)
+
+        cmap = plt.cm.plasma  # noqa: E501
+
+        # Left: kappa vs delay
+        ax = axes[0]
+        sc = ax.scatter(
+            sdf["kappa"], sdf["mean_delay"],
+            c=q_norm, cmap=cmap, s=60, edgecolors="gray", linewidths=0.4,
+        )
+        ax.set_xlabel("kappa = p · ts", fontsize=12)
+        ax.set_ylabel("Mean Delay (slots)", fontsize=12)
+        ax.set_title("kappa vs Delay")
+        ax.set_xscale("log")
+        ax.set_yscale("log")
+        ax.grid(True, alpha=0.3)
+        ax.axvline(0.1, color="green", linestyle="--", linewidth=1, alpha=0.7,
+                   label="kappa = 0.1 (near-independent)")
+        ax.axvline(1.0, color="red", linestyle="--", linewidth=1, alpha=0.7,
+                   label="kappa = 1 (strongly coupled)")
+        ax.legend(fontsize=8)
+        plt.colorbar(sc, ax=ax, label="log10(q)  [low → high]")
+
+        # Right: kappa vs lifetime
+        ax = axes[1]
+        sc = ax.scatter(
+            sdf["kappa"], sdf["mean_lifetime"],
+            c=q_norm, cmap=cmap, s=60, edgecolors="gray", linewidths=0.4,
+        )
+        ax.set_xlabel("kappa = p · ts", fontsize=12)
+        ax.set_ylabel("Mean Lifetime (years)", fontsize=12)
+        ax.set_title("kappa vs Lifetime")
+        ax.set_xscale("log")
+        ax.set_yscale("log")
+        ax.grid(True, alpha=0.3)
+        ax.axvline(0.1, color="green", linestyle="--", linewidth=1, alpha=0.7,
+                   label="kappa = 0.1")
+        ax.axvline(1.0, color="red", linestyle="--", linewidth=1, alpha=0.7,
+                   label="kappa = 1")
+        ax.legend(fontsize=8)
+        plt.colorbar(sc, ax=ax, label="log10(q)  [low → high]")
+
+        fig.suptitle(title, fontsize=14)
+        plt.tight_layout()
+        return fig, axes
+
+    @staticmethod
+    def plot_pareto_surface(
+        df: pd.DataFrame,
+        title: str = "Lifetime–Delay Tradeoff Surface over (q, ts) Grid",
+    ) -> Tuple[Any, Any]:
+        """
+        2-D heatmap of lifetime over the (q, ts) grid with delay iso-contour
+        lines and Pareto-dominant cells marked.  Shows how jointly varying q
+        and ts traces out the full achievable frontier.
+        """
+        import matplotlib.pyplot as plt
+        from scipy.interpolate import griddata
+
+        mask = df["stable"] & df["mean_lifetime"].notna() & (df["mean_lifetime"] > 0)
+        sdf = df[mask].copy()
+
+        q_vals = sorted(sdf["q"].unique())
+        ts_vals = sorted(sdf["ts"].unique())
+
+        # Build dense grid for smooth rendering
+        q_fine = np.linspace(min(q_vals), max(q_vals), 100)
+        ts_fine = np.linspace(min(ts_vals), max(ts_vals), 100)
+        Q, TS = np.meshgrid(q_fine, ts_fine)
+        points = sdf[["q", "ts"]].values
+
+        lt_grid = griddata(points, sdf["mean_lifetime"].values, (Q, TS), method="cubic")
+        d_grid = griddata(points, sdf["mean_delay"].values, (Q, TS), method="cubic")
+
+        fig, ax = plt.subplots(figsize=(11, 7))
+        cf = ax.contourf(Q, TS, lt_grid, levels=20, cmap="YlGn")
+        plt.colorbar(cf, ax=ax, label="Mean Lifetime (years)")
+
+        # Delay iso-contours
+        d_levels = [v for v in [2, 5, 10, 20, 50]
+                    if d_grid is not None
+                    and np.nanmin(d_grid) < v < np.nanmax(d_grid)]
+        if d_levels:
+            cs = ax.contour(Q, TS, d_grid, levels=d_levels,
+                            colors="black", linewidths=1.2, linestyles="--")
+            ax.clabel(cs, inline=True, fontsize=9, fmt="T=%.0f slots")
+
+        # Mark Pareto-dominant cells (min delay for each lifetime bucket)
+        lifetime_buckets = np.percentile(
+            sdf["mean_lifetime"].dropna(), [20, 40, 60, 80, 95]
+        )
+        pareto_q, pareto_ts = [], []
+        for L_thresh in lifetime_buckets:
+            feasible = sdf[sdf["mean_lifetime"] >= L_thresh]
+            if len(feasible):
+                best = feasible.loc[feasible["mean_delay"].idxmin()]
+                pareto_q.append(best["q"])
+                pareto_ts.append(best["ts"])
+
+        if pareto_q:
+            ax.scatter(pareto_q, pareto_ts, marker="*", s=220,
+                       color="white", edgecolors="black", linewidths=1,
+                       zorder=10, label="Pareto-optimal points")
+            # Connect with a dashed line
+            idx_sorted = np.argsort(pareto_q)
+            ax.plot(
+                np.array(pareto_q)[idx_sorted],
+                np.array(pareto_ts)[idx_sorted],
+                "w--", linewidth=1.5, zorder=9,
+            )
+            ax.legend(fontsize=10, loc="upper right")
+
+        ax.set_xlabel("Transmission Probability q", fontsize=12)
+        ax.set_ylabel("Idle Timer ts", fontsize=12)
+        ax.set_title(title, fontsize=13)
+        plt.tight_layout()
+        return fig, ax
+
+    @staticmethod
+    def plot_delay_lifetime_tradeoff_by_kappa(
+        df: pd.DataFrame,
+        title: str = "Delay–Lifetime Tradeoff Coloured by Coupling Strength kappa",
+    ) -> Tuple[Any, Any]:
+        """
+        ¯T vs ¯L scatter coloured by kappa, with marker shapes indicating ts.
+
+        This is the clearest single-plot summary: it shows the achievable
+        tradeoff frontier and immediately reveals that operating points cluster
+        by kappa regardless of the individual q / ts values chosen.
+        """
+        import matplotlib.pyplot as plt
+        import matplotlib.cm as cm
+
+        mask = df["stable"] & df["mean_lifetime"].notna() & (df["mean_lifetime"] > 0)
+        sdf = df[mask].copy()
+
+        fig, ax = plt.subplots(figsize=(11, 7))
+
+        ts_vals = sorted(sdf["ts"].unique())
+        markers = ["o", "s", "^", "D", "v", "P", "X", "h"]
+
+        kappa_vals = sdf["kappa"].values
+        k_norm = (np.log10(kappa_vals + 1e-9) - np.log10(kappa_vals + 1e-9).min())
+        k_range = k_norm.max()
+        k_norm = k_norm / k_range if k_range > 0 else k_norm
+
+        cmap = cm.RdYlGn_r
+        for idx, ts in enumerate(ts_vals):
+            sub = sdf[sdf["ts"] == ts]
+            k_sub = (
+                np.log10(sub["kappa"].values + 1e-9)
+                - np.log10(kappa_vals + 1e-9).min()
+            ) / k_range if k_range > 0 else np.zeros(len(sub))
+
+            sc = ax.scatter(
+                sub["mean_delay"], sub["mean_lifetime"],
+                c=k_sub, cmap=cmap, vmin=0, vmax=1,
+                marker=markers[idx % len(markers)], s=90,
+                edgecolors="gray", linewidths=0.5,
+                label=f"ts={ts}",
+            )
+
+        sm = plt.cm.ScalarMappable(cmap=cmap,
+                                   norm=plt.Normalize(vmin=0, vmax=1))
+        sm.set_array([])
+        plt.colorbar(sm, ax=ax, label="Normalised log(kappa)  [green=low, red=high]")
+
+        ax.set_xlabel("Mean Delay (slots)", fontsize=12)
+        ax.set_ylabel("Mean Lifetime (years)", fontsize=12)
+        ax.set_title(title, fontsize=13)
+        ax.set_xscale("log")
+        ax.set_yscale("log")
+        ax.legend(fontsize=9, bbox_to_anchor=(1.14, 1), loc="upper left",
+                  title="Marker = ts")
+        ax.grid(True, alpha=0.3)
+
+        ax.annotate(
+            "Bottom-right = good (low delay, long life)\n"
+            "Green points: low kappa (near-independent regime)",
+            xy=(0.02, 0.98), xycoords="axes fraction",
+            fontsize=9, va="top", style="italic", color="dimgray",
+        )
+
+        plt.tight_layout()
+        return fig, ax
+
+    @staticmethod
+    def plot_marginal_effects(
+        df: pd.DataFrame,
+        analytical: Dict[str, Any],
+        title: str = "Marginal Effect of q vs ts at Different Operating Points",
+    ) -> Tuple[Any, Any]:
+        """
+        For a representative set of (q, ts) cells, show how much ¯T and ¯L
+        change (in %) when each parameter is increased by one step in the grid.
+        Side-by-side bars make it easy to see which lever is stronger and how
+        the balance shifts across the parameter space.
+        """
+        import matplotlib.pyplot as plt
+
+        mask = df["stable"] & df["mean_lifetime"].notna() & (df["mean_lifetime"] > 0)
+        sdf = df[mask].copy().reset_index(drop=True)
+
+        q_vals = sorted(sdf["q"].unique())
+        ts_vals = sorted(sdf["ts"].unique())
+
+        # For each interior cell compute finite-difference marginal effects
+        records = []
+        for i, ts in enumerate(ts_vals[:-1]):
+            for j, q in enumerate(q_vals[:-1]):
+                base = sdf[(sdf["q"] == q) & (sdf["ts"] == ts)]
+                dq = sdf[(sdf["q"] == q_vals[j + 1]) & (sdf["ts"] == ts)]
+                dts = sdf[(sdf["q"] == q) & (sdf["ts"] == ts_vals[i + 1])]
+                if base.empty or dq.empty or dts.empty:
+                    continue
+
+                T0 = float(base["mean_delay"].iloc[0])
+                L0 = float(base["mean_lifetime"].iloc[0])
+                if T0 == 0 or L0 == 0:
+                    continue
+
+                dT_dq_pct = (float(dq["mean_delay"].iloc[0]) - T0) / T0 * 100
+                dT_dts_pct = (float(dts["mean_delay"].iloc[0]) - T0) / T0 * 100
+                dL_dq_pct = (float(dq["mean_lifetime"].iloc[0]) - L0) / L0 * 100
+                dL_dts_pct = (float(dts["mean_lifetime"].iloc[0]) - L0) / L0 * 100
+
+                records.append({
+                    "label": f"q={q}\nts={ts}",
+                    "dT_dq": dT_dq_pct,
+                    "dT_dts": dT_dts_pct,
+                    "dL_dq": dL_dq_pct,
+                    "dL_dts": dL_dts_pct,
+                    "kappa": float(base["kappa"].iloc[0]),
+                })
+
+        if not records:
+            fig, ax = plt.subplots()
+            ax.text(0.5, 0.5, "Not enough data for marginal effects.",
+                    transform=ax.transAxes, ha="center")
+            return fig, ax
+
+        # Pick up to 6 representative cells spanning the kappa range
+        records_sorted = sorted(records, key=lambda r: r["kappa"])
+        step = max(1, len(records_sorted) // 6)
+        selected = records_sorted[::step][:6]
+
+        labels = [r["label"] for r in selected]
+        x = np.arange(len(labels))
+        w = 0.2
+
+        fig, axes = plt.subplots(1, 2, figsize=(16, 6), sharey=False)
+
+        for col_idx, (metric_key_q, metric_key_ts, ylabel, metric_label) in enumerate([
+            ("dT_dq", "dT_dts", "% Change in Delay", "Delay ¯T"),
+            ("dL_dq", "dL_dts", "% Change in Lifetime", "Lifetime ¯L"),
+        ]):
+            ax = axes[col_idx]
+            q_vals_bar = [r[metric_key_q] for r in selected]
+            ts_vals_bar = [r[metric_key_ts] for r in selected]
+
+            c_q = ["#4CAF50" if v < 0 else "#F44336" for v in q_vals_bar]
+            c_ts = ["#2196F3" if (
+                (metric_key_ts == "dT_dts" and v < 0) or
+                (metric_key_ts == "dL_dts" and v > 0)
+            ) else "#FF9800" for v in ts_vals_bar]
+
+            ax.bar(x - w / 2, q_vals_bar, w, label="Step in q →", color=c_q, alpha=0.8)
+            ax.bar(x + w / 2, ts_vals_bar, w, label="Step in ts →", color=c_ts, alpha=0.8)
+            ax.axhline(0, color="black", linewidth=0.8)
+            ax.set_xticks(x)
+            ax.set_xticklabels(labels, fontsize=8)
+            ax.set_ylabel(ylabel, fontsize=11)
+            ax.set_title(f"Marginal effects on {metric_label}")
+            ax.legend(fontsize=9)
+            ax.grid(True, alpha=0.3, axis="y")
+
+            # Annotate kappa for context
+            for xi, r in enumerate(selected):
+                ax.text(xi, ax.get_ylim()[0] if ax.get_ylim()[0] < -2 else -2,
+                        f"κ={r['kappa']:.2f}", ha="center",
+                        fontsize=7, color="gray", va="top")
+
+        fig.suptitle(title, fontsize=13)
+        plt.tight_layout()
+        return fig, axes
+
 
 # ---------------------------------------------------------------------------
 # Convenience function
@@ -871,6 +1178,26 @@ def run_o5_experiments(
     fig.savefig(fig_dir / "o5_optimal_q_vs_ts.png", dpi=150, bbox_inches="tight")
     plt.close(fig)
     print("  Saved o5_optimal_q_vs_ts.png")
+
+    fig, _ = IndependenceVisualizer.plot_kappa_vs_outputs(df)
+    fig.savefig(fig_dir / "o5_kappa_vs_outputs.png", dpi=150, bbox_inches="tight")
+    plt.close(fig)
+    print("  Saved o5_kappa_vs_outputs.png")
+
+    fig, _ = IndependenceVisualizer.plot_pareto_surface(df)
+    fig.savefig(fig_dir / "o5_pareto_surface.png", dpi=150, bbox_inches="tight")
+    plt.close(fig)
+    print("  Saved o5_pareto_surface.png")
+
+    fig, _ = IndependenceVisualizer.plot_delay_lifetime_tradeoff_by_kappa(df)
+    fig.savefig(fig_dir / "o5_tradeoff_by_kappa.png", dpi=150, bbox_inches="tight")
+    plt.close(fig)
+    print("  Saved o5_tradeoff_by_kappa.png")
+
+    fig, _ = IndependenceVisualizer.plot_marginal_effects(df, analytical)
+    fig.savefig(fig_dir / "o5_marginal_effects.png", dpi=150, bbox_inches="tight")
+    plt.close(fig)
+    print("  Saved o5_marginal_effects.png")
 
     print("\n" + "=" * 80)
     print("O5 EXPERIMENTS COMPLETE!")
