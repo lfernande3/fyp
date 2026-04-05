@@ -226,11 +226,107 @@
   Deadline: Apr 15, 2026.  
   Critical: Yes.  
 
+### Objective O5: Determine whether q and t_s are independent parameters and produce graphs that answer this question definitively.
+**Status:** COMPLETE ✓ (Apr 2026)  
+**Milestone:** Complete independence analysis and publication-quality figures by late Apr 2026.  
+**Dependencies:** O1–O4 (all simulation and validation infrastructure complete).  
+**Research Question:** Are `q` (transmission probability) and `t_s` (idle timer) independent, in the sense that the effect of changing one on system performance (¯T, ¯L) does not depend on the current value of the other?  
+**Answer:** They are NOT independent. The service rate formula `μ ≈ p / (1 + p·t_s + p·t_w)` contains the cross-term `p·t_s` (where `p = q(1−q)^(n−1)`), meaning `q` and `t_s` interact multiplicatively in the denominator. Tasks 5.1–5.8 systematically prove and visualise this.  
+**Implementation:** `src/independence.py` (`IndependenceAnalyzer`, `IndependenceVisualizer`, `run_o5_experiments`), `tests/test_independence.py` (20 tests, all passing), `examples/o5_independence_analysis.ipynb`.
+
+- **Task 5.1: Full Factorial Sweep (Data Generation)** ✓ COMPLETED (Apr 2026)  
+  Description: Run a full factorial experiment across a (q, t_s) grid, recording metrics per cell. This is the single data source for all subsequent tasks.  
+  Subtasks:  
+  - Grid: `q` ∈ {0.005, 0.01, 0.02, 0.05, 0.1, 0.2} × `t_s` ∈ {1, 2, 5, 10, 20, 50} = 36 cells; fixed `n=100`, `λ=0.01`, `t_w=2`, 20 reps. ✓  
+  - Per cell: mean delay ¯T, std(¯T), lifetime ¯L, std(¯L), analytical μ and p, kappa = p·t_s, stability flag. ✓  
+  - Flag configurations violating λ < μ; exclude unstable cells from analysis. ✓  
+  - Save to `data/o5_factorial_sweep.csv`. ✓  
+  - Implemented in `IndependenceAnalyzer.run_factorial_sweep()`. ✓  
+  Estimated Effort: 4 hours. Actual Effort: ~4 hours.  
+  Deadline: Apr 10, 2026. Critical: Yes.
+
+- **Task 5.2: Analytical Decomposition of the Coupling Mechanism** ✓ COMPLETED (Apr 2026)  
+  Description: Derive analytically why `q` and `t_s` are coupled, providing the theoretical grounding for the independence answer.  
+  Subtasks:  
+  - Derive E[cycle] = 1/p + t_s + t_w → μ = p / (1 + p·t_s + p·t_w). ✓  
+  - Show ∂μ/∂q depends on t_s and ∂μ/∂t_s = −p²/(1 + p·t_s + p·t_w)² depends on q through p. ✓  
+  - Define coupling strength κ = p·t_s; κ < 0.1 → near-independent, κ ≥ 1 → strongly coupled. ✓  
+  - Implemented in `IndependenceAnalyzer.compute_analytical_quantities()`. ✓  
+  - Visualised via `IndependenceVisualizer.plot_coupling_heatmap()` saved as `figures/o5_coupling_heatmap.png`. ✓  
+  Estimated Effort: 3 hours. Actual Effort: ~3 hours.  
+  Deadline: Apr 11, 2026. Critical: Yes.
+
+- **Task 5.3: Interaction Plots (Primary Independence Test)** ✓ COMPLETED (Apr 2026)  
+  Description: Two-way interaction plots — the primary visual answer to the professors' question. Parallel curves = independent; fanning curves = coupled.  
+  Subtasks:  
+  - Panel A: ¯T vs q stratified by t_s (log-log, with 95% CI shading). ✓  
+  - Panel B: ¯L vs q stratified by t_s. ✓  
+  - Panel C: ¯T vs t_s stratified by q. ✓  
+  - Panel D: ¯L vs t_s stratified by q. ✓  
+  - 2×2 figure; curves fan visibly on all panels (non-parallel → interaction confirmed). ✓  
+  - Implemented in `IndependenceVisualizer.plot_interaction_plots()`; saved as `figures/o5_interaction_plots.png`. ✓  
+  Estimated Effort: 3 hours. Actual Effort: ~3 hours.  
+  Deadline: Apr 12, 2026. Critical: Yes.
+
+- **Task 5.4: Quantitative Interaction Test (Regression with Interaction Term)** ✓ COMPLETED (Apr 2026)  
+  Description: Formally quantify the interaction using a regression model with a `log q × log t_s` interaction term. The F-test p-value is a rigorous numerical answer to the independence question.  
+  Subtasks:  
+  - Additive model: `log Y = a·log q + b·log t_s + c`. ✓  
+  - Interaction model: `log Y = a·log q + b·log t_s + c·log q·log t_s + d`. ✓  
+  - F-test for H₀: c = 0 (independence); report F-statistic, p-value, R² improvement. ✓  
+  - Residual plot of additive model showing systematic pattern correlated with the other variable. ✓  
+  - Implemented in `IndependenceAnalyzer.run_regression_analysis()`; visualised in `IndependenceVisualizer.plot_regression_summary()`; saved as `figures/o5_residual_interaction.png`. ✓  
+  Estimated Effort: 3 hours. Actual Effort: ~3 hours.  
+  Deadline: Apr 13, 2026. Critical: Yes.
+
+- **Task 5.5: Regime Map — When Are They Near-Independent?** ✓ COMPLETED (Apr 2026)  
+  Description: Identify and visualise parameter regimes where κ = p·t_s is small enough that the interaction is negligible. Gives a nuanced answer: "coupled in general, but approximately independent when κ < 0.1".  
+  Subtasks:  
+  - (q, t_s) plane colour-coded by κ with κ = 0.1 and κ = 1 regime boundaries. ✓  
+  - Stable operating region annotated (λ < μ boundary). ✓  
+  - Near-independent regime labelled ("low q, low t_s — sparse traffic, quick sleep"). ✓  
+  - Implemented in `IndependenceVisualizer.plot_regime_map()`; saved as `figures/o5_regime_map.png`. ✓  
+  Estimated Effort: 3 hours. Actual Effort: ~3 hours.  
+  Deadline: Apr 14, 2026. Critical: Yes.
+
+- **Task 5.6: Iso-Contour Plot — What the Coupling Means for Design** ✓ COMPLETED (Apr 2026)  
+  Description: Iso-delay and iso-lifetime contours in the (q, t_s) plane. If independent, contours would be axis-aligned straight lines; their curvature makes the coupling visible for a designer.  
+  Subtasks:  
+  - Filled contourf of ¯L with solid iso-lifetime contour lines (1, 3, 5, 10 yr). ✓  
+  - Dashed iso-delay contour lines (2, 5, 10, 20 slots) on same axes. ✓  
+  - Annotation: "If independent, contours would be horizontal/vertical lines". ✓  
+  - Implemented in `IndependenceVisualizer.plot_iso_contours()`; saved as `figures/o5_iso_contours.png`. ✓  
+  Estimated Effort: 2 hours. Actual Effort: ~2 hours.  
+  Deadline: Apr 15, 2026. Critical: Yes.
+
+- **Task 5.7: Optimal q* Shifts with t_s (Consequence of Coupling)** ✓ COMPLETED (Apr 2026)  
+  Description: A direct corollary of non-independence — the delay-minimising q* under a lifetime constraint changes with t_s. A flat q*(t_s) would mean independence; a trend proves coupling.  
+  Subtasks:  
+  - For each t_s, find q*(t_s) = argmin ¯T subject to ¯L ≥ 3 yr and ¯L ≥ 5 yr. ✓  
+  - Plot q*(t_s) for both constraints; overlay q* = 1/n baseline (no-sleep optimum). ✓  
+  - Monotone shift in q*(t_s) confirms coupling; annotated with "If independent, curves would be flat". ✓  
+  - Implemented in `IndependenceAnalyzer.find_optimal_q_per_ts()` and `IndependenceVisualizer.plot_optimal_q_shift()`; saved as `figures/o5_optimal_q_vs_ts.png`. ✓  
+  Estimated Effort: 2 hours. Actual Effort: ~2 hours.  
+  Deadline: Apr 15, 2026. Critical: Yes.
+
+- **Task 5.8: Notebook and Concise Written Answer** ✓ COMPLETED (Apr 2026)  
+  Description: Self-contained notebook `examples/o5_independence_analysis.ipynb` with a direct written answer to the panel's question.  
+  Subtasks:  
+  - 8-section notebook: Setup → Analytical derivation (Section 2) → Factorial sweep (3) → Interaction plots (4) → Regression F-test (5) → Regime map (6) → Iso-contours + q* shift (7) → Written answer (8). ✓  
+  - Each section has a one-sentence hypothesis and one-sentence finding. ✓  
+  - 250-word written answer: (a) No, not independent; (b) analytical reason (p·t_s cross-term); (c) empirical proof (fanning in interaction plots, significant F-test); (d) regime caveat (κ < 0.1); (e) design implication (q* shifts → must co-optimise). ✓  
+  - Runs end-to-end in < 10 min on Colab with `n=100`, `slots=30000` (quick_mode). ✓  
+  - `run_o5_experiments()` convenience function for end-to-end execution. ✓  
+  - 20 unit tests, all passing (`tests/test_independence.py`). ✓  
+  Estimated Effort: 2 hours. Actual Effort: ~2 hours.  
+  Deadline: Apr 17, 2026. Critical: Yes.
+
 ## Overall Milestones & Timeline
 - **End Feb 2026:** Baseline simulator ready (O1 complete).  
 - **Mid-Mar 2026:** Parameter impact quantified (O2 complete).  
 - **End Mar 2026:** Optimizations done (O3 complete).  
 - **Mid-Apr 2026:** Validation & guidelines (O4 complete).  
+- **Apr 10–17, 2026:** Independence analysis of q and t_s — analytical derivation, interaction plots, regression F-test, regime map, design consequences (O5 complete).  
 - **Late Apr 2026:** Final presentation/demo, report submission (Weeks 11-12 Sem B).  
 - **Iteration Buffer:** 3 weeks scattered for refinements (e.g., bursty traffic fixes).  
 
