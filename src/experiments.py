@@ -517,6 +517,214 @@ class ScenarioExperiments:
         return analysis
 
 
+def run_o6_experiments(
+    n_nodes: int = 100,
+    arrival_rate: float = 0.01,
+    ts: int = 10,
+    tw: int = 2,
+    K_values: Optional[List[int]] = None,
+    n_replications: int = 20,
+    max_slots: int = 50000,
+    initial_energy: float = 5000.0,
+    quick_mode: bool = False,
+) -> Dict[str, Any]:
+    """
+    O6: Sweep finite retry limit K and record delay / drop-rate / lifetime.
+
+    For each K (including ∞ = None), run ``n_replications`` simulations
+    with n=100, λ=0.01, q=1/n, ts=10, tw=2 and collect:
+      - mean delay T̄
+      - packet drop rate
+      - mean lifetime L̄
+
+    Parameters
+    ----------
+    n_nodes        : Population size.
+    arrival_rate   : λ.
+    ts             : Idle timer.
+    tw             : Wakeup time.
+    K_values       : List of max_retries values.  Use ``None`` in the list
+                     for infinite retries.  Default: [3, 5, 10, None].
+    n_replications : Replications per K value.
+    max_slots      : Slots per replication.
+    initial_energy : Initial energy (mWh).
+    quick_mode     : Reduce replications/slots for fast testing.
+
+    Returns
+    -------
+    dict with keys 'K_values', 'mean_delays', 'drop_rates', 'lifetimes',
+    'mu_analytical_finite_k'.
+    """
+    from .metrics import MetricsCalculator
+
+    if quick_mode:
+        n_replications = max(5, n_replications // 4)
+        max_slots = max(10000, max_slots // 5)
+
+    if K_values is None:
+        K_values = [3, 5, 10, None]
+
+    q = 1.0 / n_nodes
+    p = q * (1.0 - q) ** (n_nodes - 1)
+    power_rates = PowerModel.get_profile(PowerProfile.GENERIC_LOW)
+
+    mean_delays = []
+    drop_rates = []
+    lifetimes = []
+    mu_analytical = []
+
+    print("=" * 70)
+    print("O6: Finite Retry Limits Sweep")
+    print(f"  n={n_nodes}, λ={arrival_rate}, q={q:.4f}, ts={ts}, tw={tw}")
+    print("=" * 70)
+
+    for K in K_values:
+        label = str(K) if K is not None else "∞"
+        base_cfg = SimulationConfig(
+            n_nodes=n_nodes,
+            arrival_rate=arrival_rate,
+            transmission_prob=q,
+            idle_timer=ts,
+            wakeup_time=tw,
+            initial_energy=initial_energy,
+            power_rates=power_rates,
+            max_slots=max_slots,
+            max_retries=K,
+        )
+        batch = BatchSimulator(base_cfg)
+        results = batch.run_replications(n_replications=n_replications)
+
+        finite_lt = [r.mean_lifetime_years for r in results
+                     if r.mean_lifetime_years != float('inf')]
+        lt_mean = float(np.mean(finite_lt)) if finite_lt else float('inf')
+        d_mean = float(np.mean([r.mean_delay for r in results]))
+        dr_mean = float(np.mean([r.mean_drop_rate for r in results]))
+
+        # Analytical service rate
+        if K is None:
+            mu_k = MetricsCalculator.compute_analytical_service_rate(p, arrival_rate, tw)
+        else:
+            mu_k = MetricsCalculator.compute_mu_finite_k(p, ts, tw, K)
+
+        mean_delays.append(d_mean)
+        drop_rates.append(dr_mean)
+        lifetimes.append(lt_mean)
+        mu_analytical.append(mu_k)
+
+        print(f"  K={label:>4}: T̄={d_mean:.2f} slots  drop={dr_mean:.4f}  "
+              f"L̄={lt_mean:.3f} yr  μ_K={mu_k:.6f}")
+
+    return {
+        'K_values': K_values,
+        'mean_delays': mean_delays,
+        'drop_rates': drop_rates,
+        'lifetimes': lifetimes,
+        'mu_analytical_finite_k': mu_analytical,
+        'params': {
+            'n_nodes': n_nodes, 'arrival_rate': arrival_rate,
+            'ts': ts, 'tw': tw, 'q': q,
+        },
+    }
+
+
+def run_o9_experiments(
+    n_nodes: int = 100,
+    arrival_rate: float = 0.01,
+    tw: int = 2,
+    q_values: Optional[List[float]] = None,
+    ts_values: Optional[List[int]] = None,
+    n_replications: int = 20,
+    max_slots: int = 50000,
+    initial_energy: float = 5000.0,
+    quick_mode: bool = False,
+) -> Dict[str, Any]:
+    """
+    O9: Sweep q and ts and record delay, lifetime, and AoI.
+
+    Identifies AoI-optimal q* vs delay-optimal q* and demonstrates
+    their divergence as ts increases.
+
+    Parameters
+    ----------
+    n_nodes        : Population size.
+    arrival_rate   : λ.
+    tw             : Wakeup time.
+    q_values       : Transmission probabilities to sweep.
+    ts_values      : Idle timer values to sweep.
+    n_replications : Replications per configuration.
+    max_slots      : Slots per replication.
+    initial_energy : Initial energy (mWh).
+    quick_mode     : Reduce replications/slots for fast testing.
+
+    Returns
+    -------
+    dict with keys 'q_values', 'ts_values', 'results_grid'
+    (keyed by ts → list-over-q of dicts with mean_delay, lifetime, mean_aoi).
+    """
+    from .metrics import MetricsCalculator
+
+    if quick_mode:
+        n_replications = max(5, n_replications // 4)
+        max_slots = max(10000, max_slots // 5)
+
+    if q_values is None:
+        q_values = list(np.linspace(0.005, 0.15, 8))
+
+    if ts_values is None:
+        ts_values = [1, 5, 10, 30, 50]
+
+    power_rates = PowerModel.get_profile(PowerProfile.GENERIC_LOW)
+
+    print("=" * 70)
+    print("O9: Age of Information (AoI) Sweep")
+    print(f"  n={n_nodes}, λ={arrival_rate}, tw={tw}")
+    print("=" * 70)
+
+    results_grid: Dict[int, List[Dict[str, float]]] = {}
+
+    for ts in ts_values:
+        ts_row = []
+        for q in q_values:
+            base_cfg = SimulationConfig(
+                n_nodes=n_nodes,
+                arrival_rate=arrival_rate,
+                transmission_prob=q,
+                idle_timer=ts,
+                wakeup_time=tw,
+                initial_energy=initial_energy,
+                power_rates=power_rates,
+                max_slots=max_slots,
+            )
+            batch = BatchSimulator(base_cfg)
+            reps = batch.run_replications(n_replications=n_replications)
+
+            finite_lt = [r.mean_lifetime_years for r in reps
+                         if r.mean_lifetime_years != float('inf')]
+            lt_mean = float(np.mean(finite_lt)) if finite_lt else float('inf')
+            d_mean = float(np.mean([r.mean_delay for r in reps]))
+            aoi_mean = float(np.mean([r.mean_aoi for r in reps]))
+
+            ts_row.append({
+                'q': q,
+                'mean_delay': d_mean,
+                'lifetime': lt_mean,
+                'mean_aoi': aoi_mean,
+            })
+
+        results_grid[ts] = ts_row
+        print(f"  ts={ts:>3}: best AoI q*={q_values[int(np.argmin([r['mean_aoi'] for r in ts_row]))]:.4f}"
+              f"  best delay q*={q_values[int(np.argmin([r['mean_delay'] for r in ts_row]))]:.4f}")
+
+    return {
+        'q_values': q_values,
+        'ts_values': ts_values,
+        'results_grid': results_grid,
+        'params': {
+            'n_nodes': n_nodes, 'arrival_rate': arrival_rate, 'tw': tw,
+        },
+    }
+
+
 def run_comprehensive_experiments(
     output_dir: str = "results",
     quick_mode: bool = False

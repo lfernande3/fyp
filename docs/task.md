@@ -321,13 +321,197 @@
   Estimated Effort: 2 hours. Actual Effort: ~2 hours.  
   Deadline: Apr 17, 2026. Critical: Yes.
 
+### Objective O6: Simulate and analyse the effect of finite retry limits (K) on delay, packet drop rate, and lifetime.
+**Status:** COMPLETE ✓ (Apr 5, 2026)  
+**Milestone:** Finite-retry results and notebook by early May 2026. ✓ DELIVERED EARLY  
+**Dependencies:** O1–O2 (Node class and metrics infrastructure).  
+**Motivation:** Wang et al. (2024) Section V notes that assuming infinite retries is an idealisation; bounding K introduces a new delay–drop-rate tradeoff and modifies the effective service process of the HOL packet.
+
+- **Task 6.1: Extend Node Class with `max_retries` (K)** ✓ COMPLETED (Apr 5, 2026)  
+  Description: Add a per-packet retry counter to the `Node` class so that a packet is silently dropped after K consecutive failed transmission attempts.  
+  Subtasks:  
+  - Add `max_retries: int` parameter to `NodeConfig` / `Node.__init__` (default `None` = infinite). ✓  
+  - Maintain `retry_count` on the HOL packet; increment on each failed attempt; drop and record when `retry_count >= max_retries`. ✓  
+  - Add `packets_dropped` and `drop_rate` to `Node` statistics. ✓  
+  - Update `SimulationResults` / `MetricsCalculator` to expose `mean_drop_rate`, `total_packets_dropped`. ✓  
+  - Add/extend unit tests in `tests/test_node.py` and `tests/test_metrics.py` (≥ 8 new tests). ✓  
+  Estimated Effort: 4–5 hours.  
+  Deadline: May 3, 2026.  
+  Critical: Yes.
+
+- **Task 6.2: Analytical Service-Rate Formula for Finite K** ✓ COMPLETED (Apr 5, 2026)  
+  Description: Derive the modified mean cycle duration when each packet is limited to K attempts, giving a closed-form μ_K.  
+  Subtasks:  
+  - Show that E[cycle | K retries] = Σ_{k=1}^{K} k·(1−p)^{k−1}·p + K·(1−p)^K (geometric truncation). ✓  
+  - Implement `compute_mu_finite_k(p, ts, tw, K)` in `src/metrics.py`. ✓  
+  - Validate formula vs. simulation across K ∈ {3, 5, 10, 20, ∞} and n ∈ {10, 50, 100}. ✓  
+  Estimated Effort: 3 hours.  
+  Deadline: May 5, 2026.  
+  Critical: Yes.
+
+- **Task 6.3: Parameter Sweep and Notebook** ✓ COMPLETED (Apr 5, 2026)  
+  Description: Sweep K ∈ {3, 5, 10, ∞} and quantify the delay–drop-rate–lifetime tradeoff.  
+  Subtasks:  
+  - For each K: run 20 replications (n=100, λ=0.01, q=1/n, ts=10, tw=2). Record T̄, L̄, drop_rate. ✓  
+  - Produce plots: (a) T̄ vs K, (b) drop_rate vs K, (c) L̄ vs K, (d) T̄ vs drop_rate Pareto. ✓  
+  - Create `examples/o6_finite_retries.ipynb` with written analysis. ✓  
+  - `run_o6_experiments()` convenience function in `src/` (e.g., append to `src/experiments.py`). ✓  
+  Estimated Effort: 4 hours.  
+  Deadline: May 8, 2026.  
+  Critical: Yes.
+
+---
+
+### Objective O7: Implement and compare a CSMA protocol against slotted Aloha under on-demand sleep.
+**Status:** COMPLETE ✓ (Apr 5, 2026)  
+**Milestone:** CSMA vs. Aloha comparison notebook by mid-May 2026. ✓ DELIVERED EARLY  
+**Dependencies:** O1–O3 (Simulator and optimization infrastructure).  
+**Motivation:** Wang et al. (2024) Section V lists CSMA as a natural extension; carrier-sense can reduce collisions but changes the node activity pattern and sleep interactions.
+
+- **Task 7.1: Implement CSMA Access Scheme** ✓ COMPLETED (Apr 5, 2026)  
+  Description: Add a carrier-sense access option to the simulator so a node defers transmission if the channel was busy in the previous slot.  
+  Subtasks:  
+  - Add `AccessScheme` enum (`SLOTTED_ALOHA`, `CSMA_1P`) to `src/simulator.py` (or a new `src/csma.py`). ✓  
+  - Channel-busy flag: `channel_busy_last_slot` maintained by `Simulator`; each active node reads it before deciding to transmit. ✓  
+  - Under `CSMA_1P`: node transmits with probability q only if `channel_busy_last_slot == False`; else defers (backs off one slot). ✓  
+  - Optionally add binary exponential backoff window (`backoff_window` parameter). ✓  
+  - Unit tests covering defer logic, backoff counter, and collision detection (≥ 8 new tests in `tests/test_simulator.py`). ✓  
+  Estimated Effort: 5–6 hours.  
+  Deadline: May 10, 2026.  
+  Critical: Yes.
+
+- **Task 7.2: Comparative Sweep and Notebook** ✓ COMPLETED (Apr 5, 2026)  
+  Description: Side-by-side Aloha vs. CSMA performance across population sizes and traffic loads.  
+  Subtasks:  
+  - Fix ts=10, tw=2, λ=0.01; sweep n ∈ {10, 50, 100, 500} for both schemes; record T̄, L̄, throughput, collision_rate. ✓  
+  - Fix n=100; sweep λ ∈ {0.001, 0.005, 0.01, 0.05} for both schemes. ✓  
+  - Plots: (a) T̄ vs n (both), (b) L̄ vs n (both), (c) collision_rate vs n (both), (d) throughput vs λ (both). ✓  
+  - Identify crossover point: n* where CSMA transitions from outperforming to underperforming Aloha. ✓  
+  - Create `examples/o7_csma_comparison.ipynb` with written interpretation. ✓  
+  Estimated Effort: 5 hours.  
+  Deadline: May 15, 2026.  
+  Critical: Yes.
+
+---
+
+### Objective O8: Model advanced receivers (capture effect and SIC) and quantify throughput and lifetime gains.
+**Status:** COMPLETE ✓ (Apr 5, 2026)  
+**Milestone:** Receiver-model comparison notebook by late May 2026. ✓ DELIVERED EARLY  
+**Dependencies:** O1–O2 (Simulator core and metrics).  
+**Motivation:** Wang et al. (2024) Section V notes that SIC and capture-effect receivers can decode packets even during collisions, fundamentally changing the effective success probability and hence the service rate and lifetime formulas.
+
+- **Task 8.1: Implement Receiver Model Module** ✓ COMPLETED (Apr 5, 2026)  
+  Description: Create `src/receiver_models.py` with three receiver variants that replace the binary collision-detection rule in `Simulator`.  
+  Subtasks:  
+  - `ReceiverModel` enum: `COLLISION` (baseline), `CAPTURE`, `SIC`. ✓  
+  - `CAPTURE`: assign each transmitting node a random power draw from an exponential distribution; packet succeeds if `P_max / P_total_interference > capture_threshold γ`. ✓  
+  - `SIC`: iteratively decode strongest signal: subtract it and repeat until SINR < threshold or no transmitters remain; multiple successes per slot possible. ✓  
+  - Plug receiver model into `Simulator` collision-detection step via a `resolve_transmissions(transmitters) -> list[int]` callable. ✓  
+  - Unit tests (≥ 10 new tests in `tests/test_receiver_models.py`). ✓  
+  Estimated Effort: 6–8 hours.  
+  Deadline: May 18, 2026.  
+  Critical: Yes.
+
+- **Task 8.2: Sweep and Notebook** ✓ COMPLETED (Apr 5, 2026)  
+  Description: Compare the three receiver models across n and q.  
+  Subtasks:  
+  - Fix λ=0.01, ts=10, tw=2; sweep n ∈ {10, 50, 100, 200} for all three models. ✓  
+  - Metrics: effective p (fraction of slots with ≥1 success), T̄, L̄, multi-packet decoded per slot (SIC only). ✓  
+  - Plots: (a) effective p vs n, (b) T̄ vs n, (c) L̄ vs n, (d) throughput vs n (all three models). ✓  
+  - Show how SIC/capture shift the optimal q* (compare to Aloha q* = 1/n). ✓  
+  - Create `examples/o8_sic_capture.ipynb`. ✓  
+  Estimated Effort: 4 hours.  
+  Deadline: May 22, 2026.  
+  Critical: Yes.
+
+---
+
+### Objective O9: Add Age of Information (AoI) as a performance metric and analyse its tradeoff with lifetime and delay.
+**Status:** COMPLETE ✓ (Apr 5, 2026)  
+**Milestone:** AoI analysis and notebook by late May 2026. ✓ DELIVERED EARLY  
+**Dependencies:** O1–O3 (Node, Simulator, Pareto optimizer).  
+**Motivation:** Wang et al. (2024) Section V identifies AoI as an alternative timeliness metric. AoI is more relevant than delay when the receiver cares about data freshness (e.g., IoT sensing); its optimal q* can differ from the delay-optimal q*.
+
+- **Task 9.1: Add AoI Tracking to Node and Simulator** ✓ COMPLETED (Apr 5, 2026)  
+  Description: Instrument `Node` and `Simulator` to track per-slot AoI values.  
+  Subtasks:  
+  - In `Node`: add `current_aoi` counter that increments each slot; resets to `current_slot - packet_generation_slot + 1` on a successful transmission (i.e., the age of the delivered packet). ✓  
+  - In `Simulator.run_simulation`: record `aoi_history` list of per-slot network-average AoI. ✓  
+  - In `SimulationResults`: add `mean_aoi`, `peak_aoi` (95th percentile of per-slot average), `aoi_history`. ✓  
+  - In `MetricsCalculator`: expose `compute_aoi_metrics()` and analytical AoI approximation `aoi_analytical(p, lambda_)`. ✓  
+  - Unit tests (≥ 8 new tests in `tests/test_metrics.py`). ✓  
+  Estimated Effort: 4–5 hours.  
+  Deadline: May 20, 2026.  
+  Critical: Yes.
+
+- **Task 9.2: AoI vs. q and ts Sweeps** ✓ COMPLETED (Apr 5, 2026)  
+  Description: Find AoI-optimal parameter settings and compare them to delay-optimal and lifetime-optimal settings.  
+  Subtasks:  
+  - Sweep q ∈ [0.005, 0.2] and ts ∈ {1, 5, 10, 30, 50} (n=100, λ=0.01); record T̄, L̄, AoI. ✓  
+  - Plot: (a) AoI vs q stratified by ts, (b) AoI-optimal q* vs ts alongside delay-optimal q*, (c) AoI vs T̄ tradeoff scatter. ✓  
+  - Extend the Pareto frontier from O3 to a 3-way AoI–delay–lifetime Pareto surface (2D projection plots). ✓  
+  - Create `examples/o9_aoi_analysis.ipynb` with written analysis. ✓  
+  - `run_o9_experiments()` convenience function (append to `src/experiments.py` or new file). ✓  
+  Estimated Effort: 5 hours.  
+  Deadline: May 25, 2026.  
+  Critical: Yes.
+
+---
+
+### Objective O10: Derive and validate a closed-form service-rate formula for Markov-modulated Bernoulli process (MMBP) arrivals.
+**Status:** COMPLETE ✓ (Apr 5, 2026)  
+**Milestone:** MMBP analytics module and notebook by early Jun 2026. ✓ DELIVERED EARLY  
+**Dependencies:** O1–O2 (simulation and metrics infrastructure); existing bursty traffic model in `src/traffic_models.py`.  
+**Motivation:** Wang et al. (2024) Section V notes that extending the analytical framework beyond Bernoulli (i.i.d.) arrivals is an open direction. The current simulator already supports bursty/on-off traffic at the simulation level; this objective closes the gap with a matching analytical formula.
+
+- **Task 10.1: MMBP Model and Simulation Integration** ✓ COMPLETED (Apr 5, 2026)  
+  Description: Formalise the 2-state MMBP as a first-class traffic model and ensure it is supported end-to-end in the simulator.  
+  Subtasks:  
+  - Define `MMBPConfig(lambda_H, lambda_L, p_HH, p_LL)` dataclass in `src/traffic_models.py` (or new `src/mmbp_analytics.py`). ✓  
+  - Implement `MMBPGenerator` that produces per-slot arrival counts by evolving the 2-state Markov chain; integrate with existing `TrafficGenerator` interface. ✓  
+  - Compute mean arrival rate `lambda_bar = pi_H * lambda_H + pi_L * lambda_L` (stationary distribution). ✓  
+  - Verify simulation-level delay and lifetime under MMBP match Bernoulli baseline when `lambda_H = lambda_L = lambda_bar` (degenerate case). ✓  
+  - Unit tests in `tests/test_traffic_models.py` (≥ 6 new tests). ✓  
+  Estimated Effort: 3–4 hours.  
+  Deadline: May 28, 2026.  
+  Critical: Yes.
+
+- **Task 10.2: Closed-Form μ_MMBP Derivation and Implementation** ✓ COMPLETED (Apr 5, 2026)  
+  Description: Extend the mean-cycle analysis (Wang et al. Eq. 12) to account for state-dependent arrival rates.  
+  Subtasks:  
+  - Derive E[idle_slots | MMBP] by conditioning on the Markov state at queue-empty moment; produce closed-form or semi-analytical expression for μ_MMBP. ✓  
+  - Implement `compute_mu_mmbp(q, n, ts, tw, lambda_H, lambda_L, p_HH, p_LL)` in `src/mmbp_analytics.py`. ✓  
+  - Compare analytical μ_MMBP vs. empirical μ from MMBP simulation for burstiness index BI ∈ {1 (Poisson), 2, 5, 10}. ✓  
+  - Plot: analytical vs. empirical μ scatter with ±10% bands; show divergence from Bernoulli formula as BI increases. ✓  
+  Estimated Effort: 5–6 hours.  
+  Deadline: Jun 1, 2026.  
+  Critical: Yes.
+
+- **Task 10.3: Notebook and Written Comparison** ✓ COMPLETED (Apr 5, 2026)  
+  Description: Self-contained notebook quantifying when the Bernoulli approximation breaks down.  
+  Subtasks:  
+  - Run paired experiments: MMBP vs. matched-mean Bernoulli across BI ∈ {1, 2, 5, 10} for n=100, λ_bar=0.01, ts=10. ✓  
+  - Plots: (a) T̄ vs BI (MMBP vs. Bernoulli formula), (b) L̄ vs BI, (c) μ_MMBP vs. μ_Bernoulli, (d) error (%) vs BI. ✓  
+  - Define a "safe-to-use Bernoulli" threshold (e.g., BI < 2 → error < 10%). ✓  
+  - Create `examples/o10_mmbp_arrivals.ipynb` with written interpretation. ✓  
+  - `run_o10_experiments()` convenience function. ✓  
+  Estimated Effort: 4 hours.  
+  Deadline: Jun 5, 2026.  
+  Critical: Yes.
+
+---
+
 ## Overall Milestones & Timeline
 - **End Feb 2026:** Baseline simulator ready (O1 complete).  
 - **Mid-Mar 2026:** Parameter impact quantified (O2 complete).  
 - **End Mar 2026:** Optimizations done (O3 complete).  
 - **Mid-Apr 2026:** Validation & guidelines (O4 complete).  
 - **Apr 10–17, 2026:** Independence analysis of q and t_s — analytical derivation, interaction plots, regression F-test, regime map, design consequences (O5 complete).  
-- **Late Apr 2026:** Final presentation/demo, report submission (Weeks 11-12 Sem B).  
+- **Early May 2026:** Finite retry limits analysis (O6 complete).  
+- **Mid-May 2026:** CSMA comparison (O7 complete).  
+- **Late May 2026:** SIC/capture receiver models (O8 complete); AoI metric and analysis (O9 complete).  
+- **Early Jun 2026:** MMBP analytical extension (O10 complete).  
+- **Mid-Jun 2026:** Final extension report chapter, updated presentation.  
 - **Iteration Buffer:** 3 weeks scattered for refinements (e.g., bursty traffic fixes).  
 
 ## Tracking & Tools

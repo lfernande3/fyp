@@ -60,7 +60,8 @@ class Node:
         initial_energy: float,
         idle_timer: int,
         wakeup_time: int,
-        power_rates: Dict[str, float]
+        power_rates: Dict[str, float],
+        max_retries: Optional[int] = None,
     ):
         """
         Initialize an MTD node.
@@ -76,6 +77,8 @@ class Node:
                         PI: Idle power
                         PW: Wake-up power
                         PS: Sleep power
+            max_retries: Maximum transmission attempts per packet (O6).
+                        None means infinite retries (default Aloha behaviour).
         """
         self.node_id = node_id
         self.state = NodeState.IDLE
@@ -100,6 +103,16 @@ class Node:
         self.packets_arrived = 0
         self.delays = []
         
+        # O6: Finite retry limits
+        self.max_retries: Optional[int] = max_retries
+        self.packets_dropped: int = 0
+
+        # O7: CSMA backoff counter (decremented each slot; node defers while > 0)
+        self.backoff_counter: int = 0
+
+        # O9: AoI — slot at which last successfully delivered packet was generated
+        self.last_delivered_generation_slot: Optional[int] = None
+
         # Track energy consumed by each state
         self.energy_consumed_by_state = {
             NodeState.ACTIVE: 0.0,
@@ -131,8 +144,8 @@ class Node:
             True if a packet arrived, False otherwise
         """
         if random.random() < arrival_rate:
-            # Packet arrives
-            packet = (current_slot, {})  # (arrival_slot, packet_data)
+            # Packet arrives; retry_count initialised to 0 for O6 tracking
+            packet = (current_slot, {'retry_count': 0})  # (arrival_slot, packet_data)
             self.queue.append(packet)
             self.packets_arrived += 1
             
@@ -191,9 +204,58 @@ class Node:
         self.total_delay += delay
         self.packets_delivered += 1
         self.delays.append(delay)
-        
+
+        # O9: record generation slot of last delivered packet for AoI computation
+        self.last_delivered_generation_slot = arrival_slot
+
         return delay
     
+    def handle_failed_attempt(self) -> bool:
+        """
+        Handle a failed transmission attempt (collision or channel loss).
+
+        Increments the retry_count on the head-of-line (HOL) packet.
+        When ``max_retries`` is set and the count reaches the limit the packet
+        is silently dropped and ``packets_dropped`` is incremented.
+
+        Returns:
+            True if the HOL packet was dropped, False otherwise.
+        """
+        if len(self.queue) == 0:
+            return False
+
+        if self.max_retries is None:
+            # Infinite retries — never drop
+            return False
+
+        arrival_slot, packet_data = self.queue[0]
+        packet_data['retry_count'] = packet_data.get('retry_count', 0) + 1
+
+        if packet_data['retry_count'] >= self.max_retries:
+            self.queue.popleft()
+            self.packets_dropped += 1
+            return True
+
+        return False
+
+    def get_current_aoi(self, current_slot: int) -> float:
+        """
+        Return the Age of Information (AoI) for this node at ``current_slot``.
+
+        AoI = current_slot − generation_slot_of_last_delivered_packet + 1.
+        If no packet has ever been delivered, returns current_slot + 1 (maximum
+        possible age — the receiver has no information).
+
+        Args:
+            current_slot: Slot number for which to compute AoI.
+
+        Returns:
+            AoI in slots (always >= 1).
+        """
+        if self.last_delivered_generation_slot is None:
+            return float(current_slot + 1)
+        return float(current_slot - self.last_delivered_generation_slot + 1)
+
     def update_state(self, current_slot: int) -> None:
         """
         Update node state based on queue status and timers.
@@ -385,11 +447,17 @@ class Node:
         Returns:
             Dictionary with all node statistics
         """
+        # O6: drop-rate statistics
+        total_handled = self.packets_delivered + self.packets_dropped
+        drop_rate = self.packets_dropped / total_handled if total_handled > 0 else 0.0
+
         return {
             'node_id': self.node_id,
             'packets_arrived': self.packets_arrived,
             'packets_delivered': self.packets_delivered,
             'packets_in_queue': len(self.queue),
+            'packets_dropped': self.packets_dropped,   # O6
+            'drop_rate': drop_rate,                    # O6
             'mean_delay': self.get_mean_delay(),
             'tail_delay_95': self.get_tail_delay(0.95),
             'tail_delay_99': self.get_tail_delay(0.99),

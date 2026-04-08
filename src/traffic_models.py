@@ -11,6 +11,7 @@ import random
 import numpy as np
 from typing import List, Tuple, Optional
 from enum import Enum
+from dataclasses import dataclass
 
 
 class TrafficModel(Enum):
@@ -185,6 +186,153 @@ class BurstyTrafficConfig:
         return (f"BurstyTrafficConfig(base_rate={self.base_rate}, "
                 f"burst_prob={self.burst_probability}, "
                 f"burst_size={self.burst_size_mean}±{self.burst_size_std})")
+
+
+# ---------------------------------------------------------------------------
+# O10: Markov-Modulated Bernoulli Process (MMBP)
+# ---------------------------------------------------------------------------
+
+@dataclass
+class MMBPConfig:
+    """
+    Parameters for a 2-state Markov-Modulated Bernoulli Process (MMBP).
+
+    States
+    ------
+    HIGH (H): arrival probability per slot = lambda_H
+    LOW  (L): arrival probability per slot = lambda_L
+
+    Transition probabilities
+    ------------------------
+    p_HH = P(stay in H | currently in H)
+    p_LL = P(stay in L | currently in L)
+
+    Therefore:
+        P(H → L) = 1 − p_HH
+        P(L → H) = 1 − p_LL
+
+    When lambda_H == lambda_L, the process degenerates to a Bernoulli(λ).
+    """
+    lambda_H: float  # Arrival prob in HIGH state
+    lambda_L: float  # Arrival prob in LOW state
+    p_HH: float      # P(stay HIGH | HIGH)
+    p_LL: float      # P(stay LOW  | LOW)
+
+    def stationary_probs(self) -> Tuple[float, float]:
+        """Return stationary probabilities (pi_H, pi_L)."""
+        # pi_H / pi_L = (1 - p_LL) / (1 - p_HH)
+        denom = (1.0 - self.p_LL) + (1.0 - self.p_HH)
+        if denom <= 0:
+            return (0.5, 0.5)
+        pi_H = (1.0 - self.p_LL) / denom
+        pi_L = 1.0 - pi_H
+        return (pi_H, pi_L)
+
+    def mean_arrival_rate(self) -> float:
+        """Mean arrival rate: λ̄ = π_H · λ_H + π_L · λ_L."""
+        pi_H, pi_L = self.stationary_probs()
+        return pi_H * self.lambda_H + pi_L * self.lambda_L
+
+    def burstiness_index(self) -> float:
+        """
+        Asymptotic Fano factor (index of dispersion) for the MMBP.
+
+        F = 1 + 2(λ_H − λ_L)² · π_H · π_L / (λ̄ · (1 − ρ))
+
+        where ρ = p_HH + p_LL − 1 is the eigenvalue controlling mixing speed.
+        F = 1 for Bernoulli (no burstiness).
+        """
+        pi_H, pi_L = self.stationary_probs()
+        lambda_bar = self.mean_arrival_rate()
+        rho = self.p_HH + self.p_LL - 1.0     # in (-1, 1)
+        if abs(1.0 - rho) < 1e-10 or lambda_bar < 1e-10:
+            return 1.0
+        fano = (1.0 + 2.0 * (self.lambda_H - self.lambda_L) ** 2
+                * pi_H * pi_L / (lambda_bar * (1.0 - rho)))
+        return max(1.0, float(fano))
+
+    def __post_init__(self):
+        if not (0.0 < self.p_HH < 1.0):
+            raise ValueError(f"p_HH must be in (0, 1), got {self.p_HH}")
+        if not (0.0 < self.p_LL < 1.0):
+            raise ValueError(f"p_LL must be in (0, 1), got {self.p_LL}")
+        if not (0.0 <= self.lambda_H <= 1.0):
+            raise ValueError(f"lambda_H must be in [0, 1], got {self.lambda_H}")
+        if not (0.0 <= self.lambda_L <= 1.0):
+            raise ValueError(f"lambda_L must be in [0, 1], got {self.lambda_L}")
+
+
+class MMBPGenerator:
+    """
+    Generates per-slot packet arrivals according to a 2-state MMBP.
+
+    The Markov chain state is evolved each time :meth:`next_slot` is called.
+    Initial state is drawn from the stationary distribution.
+    """
+
+    def __init__(self, config: MMBPConfig, seed: Optional[int] = None):
+        """
+        Args:
+            config: MMBP parameters.
+            seed:   Random seed for reproducibility (None = use global state).
+        """
+        self.config = config
+        self._rng = random.Random(seed)
+
+        # Initialise state from stationary distribution
+        pi_H, _pi_L = config.stationary_probs()
+        self._state: int = 1 if self._rng.random() < pi_H else 0  # 1=HIGH, 0=LOW
+
+    @property
+    def is_high_state(self) -> bool:
+        return self._state == 1
+
+    def next_slot(self) -> int:
+        """
+        Advance one slot: evolve chain, then generate 0 or 1 arrival.
+
+        Returns:
+            1 if a packet arrived, 0 otherwise.
+        """
+        cfg = self.config
+        # Evolve Markov chain
+        if self._state == 1:   # HIGH
+            self._state = 1 if self._rng.random() < cfg.p_HH else 0
+            lam = cfg.lambda_H
+        else:                  # LOW
+            self._state = 0 if self._rng.random() < cfg.p_LL else 1
+            lam = cfg.lambda_L
+
+        return 1 if self._rng.random() < lam else 0
+
+    def generate_trace(self, n_slots: int) -> List[int]:
+        """
+        Generate a per-slot arrival trace of length ``n_slots``.
+
+        Returns:
+            List of 0/1 integers (1 = arrival).
+        """
+        return [self.next_slot() for _ in range(n_slots)]
+
+
+def generate_mmbp_traffic_trace(
+    n_slots: int,
+    config: MMBPConfig,
+    seed: Optional[int] = None
+) -> List[int]:
+    """
+    Convenience wrapper: generate an MMBP arrival trace.
+
+    Args:
+        n_slots: Number of slots.
+        config:  MMBP parameters.
+        seed:    Random seed.
+
+    Returns:
+        List of per-slot arrival counts (0 or 1).
+    """
+    gen = MMBPGenerator(config, seed=seed)
+    return gen.generate_trace(n_slots)
 
 
 def generate_bursty_traffic_trace(

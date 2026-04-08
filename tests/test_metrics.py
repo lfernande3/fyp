@@ -676,3 +676,121 @@ class TestEdgeCasesExtended(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+# ===========================================================================
+# O6: compute_mu_finite_k tests
+# ===========================================================================
+
+class TestComputeMuFiniteK(unittest.TestCase):
+    """Tests for MetricsCalculator.compute_mu_finite_k (O6)."""
+
+    def test_large_k_approaches_infinite(self):
+        """For very large K, mu_K should converge to the infinite-retry service rate."""
+        p, ts, tw = 0.05, 10, 2
+        mu_inf = MetricsCalculator.compute_analytical_service_rate(p, 0.0, tw, has_sleep=False)
+        # Without sleep factor, mu = p / (1 + p*ts + p*tw)
+        # Compute reference manually
+        mu_large = MetricsCalculator.compute_mu_finite_k(p, ts, tw, K=1000)
+        # Should be very close because (1-p)^1000 ≈ 0
+        self.assertAlmostEqual(mu_large, p / (1 + p * ts + p * tw), places=4)
+
+    def test_k_1_only_one_attempt(self):
+        """With K=1, p_deliver = p and E_attempts = 1."""
+        p, ts, tw = 0.1, 5, 2
+        mu_1 = MetricsCalculator.compute_mu_finite_k(p, ts, tw, K=1)
+        # p_deliver = p, E_attempts = 1
+        expected = p / (1 + ts * p + tw * p)
+        self.assertAlmostEqual(mu_1, expected, places=10)
+
+    def test_mu_finite_k_increases_with_k(self):
+        """Larger K allows more deliveries, so service rate should increase."""
+        p, ts, tw = 0.05, 10, 2
+        mu_prev = MetricsCalculator.compute_mu_finite_k(p, ts, tw, K=1)
+        for K in [2, 5, 10, 50]:
+            mu_k = MetricsCalculator.compute_mu_finite_k(p, ts, tw, K=K)
+            self.assertGreaterEqual(mu_k, mu_prev,
+                                    msg=f"mu_K should be non-decreasing; failed at K={K}")
+            mu_prev = mu_k
+
+    def test_zero_p_returns_zero(self):
+        """With p=0, service rate must be 0."""
+        mu = MetricsCalculator.compute_mu_finite_k(0.0, ts=10, tw=2, K=5)
+        self.assertEqual(mu, 0.0)
+
+    def test_zero_k_returns_zero(self):
+        """K=0 means no attempts allowed, so service rate is 0."""
+        mu = MetricsCalculator.compute_mu_finite_k(0.1, ts=10, tw=2, K=0)
+        self.assertEqual(mu, 0.0)
+
+
+# ===========================================================================
+# O9: AoI metric tests
+# ===========================================================================
+
+class TestAoIMetrics(unittest.TestCase):
+    """Tests for MetricsCalculator AoI methods (O9)."""
+
+    def _make_config(self, **kwargs):
+        pr = {'PT': 10.0, 'PB': 5.0, 'PI': 1.0, 'PW': 2.0, 'PS': 0.1}
+        defaults = dict(
+            n_nodes=5, arrival_rate=0.05, transmission_prob=0.2,
+            idle_timer=5, wakeup_time=2, initial_energy=5000.0,
+            power_rates=pr, max_slots=500, seed=42
+        )
+        defaults.update(kwargs)
+        return SimulationConfig(**defaults)
+
+    def test_aoi_analytical_formula(self):
+        """aoi_analytical returns 1/p + 1/lambda."""
+        p, lam = 0.05, 0.01
+        expected = 1.0 / p + 1.0 / lam
+        result = MetricsCalculator.aoi_analytical(p, lam)
+        self.assertAlmostEqual(result, expected, places=10)
+
+    def test_aoi_analytical_infinite_for_zero_p(self):
+        """Zero success probability → infinite AoI."""
+        self.assertEqual(MetricsCalculator.aoi_analytical(0.0, 0.01), float('inf'))
+
+    def test_aoi_analytical_infinite_for_zero_lambda(self):
+        """Zero arrival rate → infinite AoI."""
+        self.assertEqual(MetricsCalculator.aoi_analytical(0.05, 0.0), float('inf'))
+
+    def test_simulation_result_has_mean_aoi(self):
+        """SimulationResults includes mean_aoi field after a run."""
+        cfg = self._make_config()
+        sim = Simulator(cfg)
+        result = sim.run_simulation()
+        self.assertTrue(hasattr(result, 'mean_aoi'))
+        self.assertGreater(result.mean_aoi, 0.0)
+
+    def test_simulation_result_has_peak_aoi(self):
+        """peak_aoi >= mean_aoi."""
+        cfg = self._make_config()
+        sim = Simulator(cfg)
+        result = sim.run_simulation()
+        self.assertGreaterEqual(result.peak_aoi, result.mean_aoi)
+
+    def test_compute_aoi_metrics_returns_dict(self):
+        """compute_aoi_metrics returns a dict with expected keys."""
+        cfg = self._make_config()
+        result = Simulator(cfg).run_simulation()
+        metrics = MetricsCalculator.compute_aoi_metrics(result)
+        for key in ('mean_aoi', 'mean_aoi_ms', 'peak_aoi', 'peak_aoi_ms',
+                    'aoi_violation_rate'):
+            self.assertIn(key, metrics)
+
+    def test_aoi_decreases_with_higher_q(self):
+        """Higher q → faster service → lower AoI (on average)."""
+        cfg_low_q = self._make_config(transmission_prob=0.02)
+        cfg_high_q = self._make_config(transmission_prob=0.2)
+        aoi_low = Simulator(cfg_low_q).run_simulation().mean_aoi
+        aoi_high = Simulator(cfg_high_q).run_simulation().mean_aoi
+        self.assertLess(aoi_high, aoi_low)
+
+    def test_aoi_history_populated_with_track_history(self):
+        """aoi_history is populated when track_history=True."""
+        cfg = self._make_config()
+        result = Simulator(cfg).run_simulation(track_history=True)
+        self.assertIsNotNone(result.aoi_history)
+        self.assertGreater(len(result.aoi_history), 0)

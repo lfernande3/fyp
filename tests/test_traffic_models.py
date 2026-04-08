@@ -285,3 +285,80 @@ class TestEdgeCases(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+# ===========================================================================
+# O10: MMBP tests
+# ===========================================================================
+
+from src.traffic_models import MMBPConfig, MMBPGenerator, generate_mmbp_traffic_trace
+
+
+class TestMMBPConfig(unittest.TestCase):
+    """Tests for MMBPConfig dataclass (O10)."""
+
+    def _default_cfg(self):
+        return MMBPConfig(lambda_H=0.05, lambda_L=0.005, p_HH=0.9, p_LL=0.9)
+
+    def test_stationary_probs_sum_to_one(self):
+        """Stationary probabilities must sum to 1."""
+        pi_H, pi_L = self._default_cfg().stationary_probs()
+        self.assertAlmostEqual(pi_H + pi_L, 1.0, places=10)
+
+    def test_stationary_probs_symmetric(self):
+        """Equal transition probs → equal stationary probs."""
+        cfg = MMBPConfig(lambda_H=0.05, lambda_L=0.005, p_HH=0.9, p_LL=0.9)
+        pi_H, pi_L = cfg.stationary_probs()
+        self.assertAlmostEqual(pi_H, 0.5, places=10)
+        self.assertAlmostEqual(pi_L, 0.5, places=10)
+
+    def test_mean_arrival_rate_formula(self):
+        """Mean arrival rate matches π_H·λ_H + π_L·λ_L."""
+        cfg = self._default_cfg()
+        pi_H, pi_L = cfg.stationary_probs()
+        expected = pi_H * cfg.lambda_H + pi_L * cfg.lambda_L
+        self.assertAlmostEqual(cfg.mean_arrival_rate(), expected, places=12)
+
+    def test_burstiness_index_at_least_one(self):
+        """BI >= 1 always."""
+        self.assertGreaterEqual(self._default_cfg().burstiness_index(), 1.0)
+
+    def test_degenerate_mmbp_is_bernoulli(self):
+        """When lambda_H == lambda_L, BI == 1 (degenerate Bernoulli)."""
+        cfg = MMBPConfig(lambda_H=0.01, lambda_L=0.01, p_HH=0.8, p_LL=0.8)
+        self.assertAlmostEqual(cfg.burstiness_index(), 1.0, places=5)
+
+    def test_invalid_p_HH_raises(self):
+        """p_HH outside (0,1) raises ValueError."""
+        with self.assertRaises(ValueError):
+            MMBPConfig(lambda_H=0.05, lambda_L=0.005, p_HH=0.0, p_LL=0.9)
+
+
+class TestMMBPGenerator(unittest.TestCase):
+    """Tests for MMBPGenerator class (O10)."""
+
+    def _default_gen(self, seed=0):
+        cfg = MMBPConfig(lambda_H=0.05, lambda_L=0.005, p_HH=0.9, p_LL=0.9)
+        return MMBPGenerator(cfg, seed=seed)
+
+    def test_next_slot_binary(self):
+        """next_slot returns only 0 or 1."""
+        gen = self._default_gen()
+        for _ in range(200):
+            v = gen.next_slot()
+            self.assertIn(v, (0, 1))
+
+    def test_generate_trace_length(self):
+        """generate_trace returns correct length list."""
+        gen = self._default_gen()
+        trace = gen.generate_trace(500)
+        self.assertEqual(len(trace), 500)
+
+    def test_mean_rate_consistent_with_config(self):
+        """Long trace mean rate is close to theoretical λ̄."""
+        cfg = MMBPConfig(lambda_H=0.1, lambda_L=0.02, p_HH=0.8, p_LL=0.8)
+        gen = MMBPGenerator(cfg, seed=42)
+        trace = gen.generate_trace(50000)
+        empirical_rate = sum(trace) / len(trace)
+        expected_rate = cfg.mean_arrival_rate()
+        self.assertAlmostEqual(empirical_rate, expected_rate, delta=0.01)

@@ -1,114 +1,177 @@
-# Product Requirements Document (PRD) for M2M Sleep-Based Simulator
+# Product Requirements Document
 
 **Project Title:** Sleep-Based Low-Latency Access for Machine-to-Machine Communications  
-**Version:** 2.0  
-**Date:** February 10, 2026  
+**Version:** 3.0  
+**Date:** April 8, 2026
 
-## 1. Overview & Purpose
+## 1. Project Definition
 
-### Primary Goal
-To set up a discrete-event simulation framework for sleep-based random access schemes (with slotted Aloha and on-demand sleep as the baseline) to quantify the impact of key parameters, optimize for latency-longevity trade-offs, and validate against 3GPP mMTC parameters (e.g., RA-SDT, MICO mode, T3324 timer). The simulator will demonstrate the tension between battery life and low-latency access in M2M/IoT networks with massive battery-powered Machine-Type Devices (MTDs), focusing on how prioritizing low latency affects battery life and vice versa. This includes visualizing differences in scenarios where low latency is prioritized (e.g., via smaller idle timer ts or higher transmission probability q) versus battery life prioritization (e.g., longer ts or lower q).
+### Purpose
+Build a discrete-event simulation framework for sleep-aware random access in M2M/IoT networks, using slotted Aloha with on-demand sleep as the baseline, so the project can quantify the delay-lifetime trade-off, validate the analytical model, and produce report-ready design guidance.
 
-### Problem Solved
-The simulator addresses the challenge of understanding and optimizing sleep-aware access schemes to meet stringent latency requirements under energy constraints and massive access, which analytical models alone cannot easily show through stochastic variability, visual traces of node states over time, sensitivity to realistic power models, and edge cases.
+### Core Problem
+Battery-powered machine-type devices must balance two competing goals:
 
-### Intended Audience
-Primarily professors and assessors for evaluating FYP progress and results. Secondary audiences may include other researchers or students in IoT/M2M communications.
+- low access delay for fresh and timely delivery
+- long battery lifetime under sparse and bursty traffic
 
-### Scope Level
-Undecided (prototype for FYP demonstration, with potential for reusable tool).
+Analytical models explain the mean trends, but they do not show transient behavior, stochastic variability, validation confidence, or how the conclusions change once richer traffic, retry, and receiver assumptions are added.
 
-## 2. Background & Alignment with the Paper/PDF
+### Primary Research Question
+How should the transmission probability `q` and sleep timer `t_s` be configured so that large populations of MTDs can achieve acceptable delay without giving up battery lifetime?
 
-### Alignment with Project Objectives (from PDF)
-The simulator must faithfully reproduce and validate key elements from the provided paper (Wang et al., 2024) and align with the FYP objectives:
-- **O1:** Discrete-event simulation framework for slotted Aloha with on-demand sleep.
-- **O2:** Quantify impact of parameters (sleep idle timer ts, wake-up time tw, transmission probability q, arrival rate λ, population size n, traffic models like Poisson and bursty arrivals).
-- **O3:** Optimize sleep and access parameters for latency-longevity trade-offs.
-- **O4:** Validate against 3GPP mMTC parameters (e.g., RA-SDT, MICO mode, T3324 timer); produce design guidelines and plots.
-Focus on unsaturated regimes (λ < μ to ensure finite delays), as emphasized in the paper.
+### Secondary Research Question
+Can `q` and `t_s` be tuned independently, or does the system require joint optimization?
 
-### Extensions
-Implement options for extensions (e.g., heterogeneous nodes, non-Bernoulli arrivals, capture effect, duty-cycling comparison) later if needed, but not necessary for core scope.
+## 2. Intended Outcome
 
-### Direct Comparison to Analytical Results
-The simulator should output values (e.g., service rate μ, success probability p, expected lifetime ¯L, mean queueing delay ¯T) that can be directly compared to the paper's analytical curves (e.g., monotonicity of lifetime/delay with q, tradeoff with ts).
+The project should produce:
 
-## 3. Functional Requirements
+- a validated simulator for the baseline model
+- a structured set of experiments covering parameter sensitivity, optimization, and 3GPP-inspired interpretation
+- report-ready figures, tables, and discussion points
+- a clear separation between the core contribution and the extension studies
 
-### Key Simulation Outputs / Metrics
-All metrics from the paper and PDF must be supported:
-- Average / per-node lifetime (slots until energy ≤ 0, or estimated in years using realistic slot duration e.g., 6 ms).
-- Mean queueing delay ¯T (and access delay ¯D, tail delay).
-- Throughput (successful transmissions per slot).
-- Average queue length over time.
-- Fraction of time in each state (active, idle, sleep, wakeup).
-- Energy consumption breakdown by state.
-- Success probability p (empirical vs. analytical).
-- Service rate μ (empirical).
-Additional: Energy per successful packet.
+## 3. Objective Structure
 
-### Logging
-- Trace-level logging: Per-slot logs of node states, queue lengths, transmissions, collisions, energy (configurable for debugging / plots).
+To improve report flow, the objectives are grouped by contribution rather than listed as a flat set of ten unrelated tasks.
 
-### Visualizations / Plots
-Post-simulation selection of plots (e.g., via Jupyter interface):
-- Lifetime vs. delay scatter for different ts.
-- Lifetime vs. q curve.
-- Delay vs. q curve.
-- Queue evolution over time.
-- Energy depletion curves.
-- State occupation pie charts.
-- Trade-off curves (e.g., on-demand vs. duty-cycling).
-- Comparison plots for low-latency prioritization vs. battery-life prioritization.
+### A. Foundation Objectives
 
-### Experiment Support
-- Batch / parameter sweep experiments: Run multiple replications for each (n, q, ts, λ) combination, average over seeds.
-- Interactive mode: Sliders in Jupyter for q, ts, n to see real-time effects (good for demos to supervisor/assessor).
+- **O1:** Build the discrete-event simulation framework for slotted Aloha with on-demand sleep.
 
-## 4. Non-Functional & Technical Requirements
+### B. Core Analysis Objectives
 
-### Target Scale
-Align with PDF methodology:
-- Number of nodes n: 100–10,000 (typical 10–100 for fast runs, max 500 for validation).
-- Number of slots: 10^5–10^7 to get reliable statistics and deplete batteries.
-- Replications per config: 20–50 for confidence intervals.
+- **O2:** Quantify how `t_s`, `q`, `n`, `lambda`, `t_w`, and traffic assumptions affect delay and lifetime.
+- **O5:** Determine analytically and empirically whether `q` and `t_s` behave independently.
 
-### Performance
-Run reasonably fast on Google Colab (e.g., one full experiment in <5–30 minutes on standard laptop/Colab).
+### C. Design and Validation Objectives
 
-### Randomness Control
-- Fixed seed per run, different seeds across replications, logging of seed for reproducibility.
+- **O3:** Identify Pareto-efficient operating points for the latency-longevity trade-off.
+- **O4:** Validate simulation output against analytical formulas and map the results to 3GPP-inspired settings.
 
-### Validation / Sanity Checks
-- Built-in comparisons: Simulated μ and p vs. analytical formulas for small cases.
+### D. Extension Objectives
 
-### File Formats for Results
-- Options for all: CSV per experiment, JSON summary, pickled objects, plots as PNG/PDF.
+- **O6:** Add finite retry limits and analyze the delay-drop trade-off.
+- **O7:** Compare slotted Aloha with a CSMA-based alternative.
+- **O8:** Add capture-effect and SIC receiver models.
+- **O9:** Add Age of Information as a timeliness metric.
+- **O10:** Extend the analysis to MMBP arrivals and identify when the Bernoulli approximation breaks down.
 
-## 5. Constraints, Assumptions, Out-of-Scope
+## 4. Scope
 
-### Hard Constraints
-- Align with PDF: Pure Python + SimPy library, no external simulators (e.g., ns-3/OMNeT++).
-- Dependencies: Minimal (numpy, matplotlib, pandas, scipy; SimPy for discrete-event simulation).
-- Traffic models: Poisson and bursty arrivals.
-- Realism: Use 3GPP NR power values and slot duration (6 ms) where possible.
+### In Scope
+
+- discrete-event simulation in Python
+- slotted random access with on-demand sleep
+- unsaturated operating regime with `lambda < mu`
+- battery-lifetime and delay analysis
+- parameter sweeps, validation, optimization, and figure generation
+- 3GPP-inspired interpretation of `t_s`, `t_w`, and related settings
+- extension studies that reuse the validated simulator core
 
 ### Out of Scope
-- Physical layer modeling, mobility, multi-channel, non-slotted Aloha, CSMA instead of Aloha, real hardware emulation.
-- Saturated regimes (focus on unsaturated as per paper).
 
-### Assumptions
-- Power model: Configurable (PT >> PB > PI > PW > PS, with specific ratios inspired by LoRa/5G MTDs).
-- Wake-up cost: Modeled realistically (energy during tw slots).
+- full physical-layer modeling
+- mobility and multi-channel access
+- hardware emulation
+- standard-compliant implementation of complete 3GPP procedures
+- saturated-regime performance as the main study target
 
-## 6. Success & Deliverables
+## 5. Functional Requirements
 
-### Success Criteria
-Undecided, but aligned with PDF progress: Simulator produces publication-quality plots showing clear tradeoff improvements over default parameters (e.g., gains in lifetime/delay via optimal q/ts), matches paper trends (e.g., on-demand outperforms duty-cycling), runs stably, and supports FYP milestones (e.g., trade-off curves by Jan 2026).
+### Simulation Capabilities
 
-### Key Deliverables
-- Jupyter notebook with examples (e.g., baseline simulations, parameter sweeps, interactive plots).
-- Set of plots for thesis/paper (e.g., delay vs. lifetime, design guidelines like recommended ts vs. traffic load).
-- GitHub repo (optional) with README + sample runs.
-- Preliminary report on simulation results by end Jan 2026.
+The simulator must support:
+
+- per-node state evolution across active, idle, sleep, and wakeup states
+- packet generation under baseline and richer traffic models
+- slotted contention and transmission resolution
+- configurable energy consumption by state
+- repeated runs across parameter grids with seeded randomness
+
+### Required Outputs
+
+The simulator must be able to produce:
+
+- mean queueing delay and related delay statistics
+- empirical success probability `p`
+- empirical service rate `mu`
+- throughput and queue statistics
+- lifetime estimates in slots and physical time
+- state occupancy fractions
+- energy-consumption breakdowns
+- report-ready plots and summary tables
+
+### Logging and Export
+
+The framework should support:
+
+- trace-level logging for debugging
+- CSV and JSON experiment summaries
+- PNG and PDF plot export
+- notebook-friendly workflows for demonstrations and figure generation
+
+## 6. Experimental Requirements
+
+### Baseline Experimental Program
+
+The project should cover:
+
+- validation of `p`, `mu`, delay, and lifetime against the analytical baseline
+- parameter sweeps over `q`, `t_s`, `n`, and `lambda`
+- optimization over the `(q, t_s)` design space
+- scenario comparison for latency-priority, balanced, and battery-priority settings
+- 3GPP-inspired mappings for practical interpretation
+- explicit independence analysis for `q` and `t_s`
+
+### Extension Experimental Program
+
+Each extension objective should have a focused experiment set and a compact report write-up, rather than being allowed to dominate the main narrative.
+
+## 7. Non-Functional Requirements
+
+### Performance
+
+- runs should remain practical on a normal laptop or notebook environment
+- standard batch experiments should complete in minutes rather than hours when possible
+
+### Reproducibility
+
+- random seeds must be recorded
+- parameter configurations must be logged clearly
+- exported figures and tables should be reproducible from saved notebooks or scripts
+
+### Maintainability
+
+- the baseline simulator should remain modular so extensions do not break core validation
+- metrics, traffic models, and receiver logic should remain separable where possible
+
+## 8. Validation Requirements
+
+The project is successful only if the simulator is credible before optimization and extensions are discussed.
+
+Validation should therefore include:
+
+- sanity checks on state transitions and contention behavior
+- direct comparisons against analytical formulas
+- convergence checks over increasing run lengths
+- exclusion or clear labeling of unstable configurations
+
+## 9. Success Criteria
+
+The project should be considered successful if it delivers:
+
+- a stable and testable simulator
+- strong agreement with the analytical baseline in the valid regime
+- clear plots showing the delay-lifetime trade-off
+- practical guidance on how `q` and `t_s` should be chosen
+- a report structure where the core argument is easy to follow and the extensions support, rather than distract from, that argument
+
+## 10. Deliverables
+
+- simulation codebase
+- experiment notebooks and scripts
+- thesis/report figures and tables
+- a final report built around the grouped objective structure above
+- concise extension write-ups that sit after the core results

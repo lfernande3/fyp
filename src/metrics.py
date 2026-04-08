@@ -744,6 +744,108 @@ class MetricsCalculator:
         print("\n" + "=" * 80)
 
 
+    # ------------------------------------------------------------------
+    # O6: Finite retry limits
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def compute_mu_finite_k(p: float, ts: int, tw: int, K: int) -> float:
+        """
+        Analytical service rate for finite retry limit K (O6).
+
+        When packets are dropped after K failed attempts, the mean cycle
+        duration changes.  Let p_deliver = 1 − (1−p)^K be the probability
+        that a packet is eventually delivered within K attempts.
+
+        E[attempts until delivery or drop]
+            = Σ_{k=1}^{K} k·(1−p)^(k−1)·p  +  K·(1−p)^K
+            = (1/p) · (1 − (1−p)^K)          [geometric truncation]
+
+        Service rate:
+            μ_K = p_deliver / (E_attempts + ts·p_deliver + tw·p_deliver)
+
+        Args:
+            p:  Per-slot success probability  q(1−q)^(n−1).
+            ts: Idle timer value.
+            tw: Wakeup time.
+            K:  Maximum attempts per packet.  Pass a very large int for ≈ ∞.
+
+        Returns:
+            Service rate μ_K (packets per slot).
+        """
+        if p <= 0 or K <= 0:
+            return 0.0
+        fail_k = (1.0 - p) ** K          # P(all K attempts fail)
+        p_deliver = 1.0 - fail_k          # P(packet delivered within K attempts)
+        # E[number of transmission attempts] using truncated geometric formula
+        e_attempts = (1.0 - fail_k) / p  # = (1/p)(1 - (1-p)^K)
+        denominator = e_attempts + ts * p_deliver + tw * p_deliver
+        return p_deliver / denominator if denominator > 0 else 0.0
+
+    # ------------------------------------------------------------------
+    # O9: Age of Information
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def compute_aoi_metrics(
+        result: 'SimulationResults',
+        aoi_threshold: float = 100.0
+    ) -> Dict[str, float]:
+        """
+        Extract AoI metrics from a SimulationResults object (O9).
+
+        Args:
+            result:        SimulationResults from a simulation run.
+            aoi_threshold: Slots above which a sample is counted as a
+                           violation (default 100 slots = 600 ms at 6 ms/slot).
+
+        Returns:
+            Dictionary with mean_aoi, peak_aoi, and aoi_violation_rate.
+        """
+        mean_aoi = result.mean_aoi
+        peak_aoi = result.peak_aoi
+
+        violation_rate = 0.0
+        if result.aoi_history:
+            violations = sum(1 for a in result.aoi_history if a > aoi_threshold)
+            violation_rate = violations / len(result.aoi_history)
+
+        return {
+            'mean_aoi': mean_aoi,
+            'mean_aoi_ms': mean_aoi * MetricsCalculator.SLOT_DURATION_MS,
+            'peak_aoi': peak_aoi,
+            'peak_aoi_ms': peak_aoi * MetricsCalculator.SLOT_DURATION_MS,
+            'aoi_violation_rate': violation_rate,
+        }
+
+    @staticmethod
+    def aoi_analytical(p: float, lambda_: float) -> float:
+        """
+        Approximate mean AoI for a generate-at-will status-update system (O9).
+
+        Under the generate-at-will policy (a new packet is generated
+        immediately after a successful transmission), the mean AoI is:
+
+            E[AoI] ≈ 1/p + 1/λ
+
+        where 1/p is the mean service time and 1/λ is the mean inter-
+        arrival time.
+
+        This is the standard first-order AoI approximation; see e.g.
+        Kaul et al. (2011).
+
+        Args:
+            p:       Per-slot success probability  q(1−q)^(n−1).
+            lambda_: Packet arrival rate per slot.
+
+        Returns:
+            Approximate mean AoI in slots.
+        """
+        if p <= 0 or lambda_ <= 0:
+            return float('inf')
+        return 1.0 / p + 1.0 / lambda_
+
+
 def analyze_batch_results(
     batch_results: List[SimulationResults],
     param_name: str = None,

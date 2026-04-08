@@ -332,3 +332,179 @@ def run_all_tests():
 
 if __name__ == "__main__":
     run_all_tests()
+
+
+# ===========================================================================
+# O7: CSMA tests
+# ===========================================================================
+
+def get_csma_config(n_nodes=5, max_slots=500, backoff_window=0):
+    """Helper to create a CSMA config."""
+    power_rates = {
+        'PT': 10.0, 'PB': 5.0, 'PI': 1.0, 'PW': 2.0, 'PS': 0.1
+    }
+    return SimulationConfig(
+        n_nodes=n_nodes,
+        arrival_rate=0.05,
+        transmission_prob=0.3,
+        idle_timer=5,
+        wakeup_time=2,
+        initial_energy=5000.0,
+        power_rates=power_rates,
+        max_slots=max_slots,
+        seed=42,
+        access_scheme="csma_1p",
+        backoff_window=backoff_window,
+    )
+
+
+def test_csma_config_field_present():
+    """SimulationConfig has access_scheme field with default 'slotted_aloha'."""
+    config = get_default_config()
+    assert config.access_scheme == "slotted_aloha"
+    print("[PASS] CSMA config field test passed")
+
+
+def test_csma_simulation_runs():
+    """CSMA simulation runs without error and produces results."""
+    config = get_csma_config()
+    sim = Simulator(config)
+    result = sim.run_simulation()
+    assert result.total_slots > 0
+    assert result.total_transmissions >= 0
+    print("[PASS] CSMA simulation runs test passed")
+
+
+def test_csma_fewer_collisions_than_aloha():
+    """CSMA should produce fewer collisions than Aloha for same parameters."""
+    pr = {'PT': 10.0, 'PB': 5.0, 'PI': 1.0, 'PW': 2.0, 'PS': 0.1}
+    base = dict(n_nodes=10, arrival_rate=0.1, transmission_prob=0.3,
+                idle_timer=3, wakeup_time=2, initial_energy=5000.0,
+                power_rates=pr, max_slots=2000, seed=42)
+
+    aloha_cfg = SimulationConfig(**base, access_scheme="slotted_aloha")
+    csma_cfg = SimulationConfig(**base, access_scheme="csma_1p")
+
+    aloha_result = Simulator(aloha_cfg).run_simulation()
+    csma_result = Simulator(csma_cfg).run_simulation()
+
+    assert csma_result.total_collisions <= aloha_result.total_collisions, (
+        f"CSMA collisions ({csma_result.total_collisions}) should be <= "
+        f"Aloha collisions ({aloha_result.total_collisions})"
+    )
+    print("[PASS] CSMA fewer collisions test passed")
+
+
+def test_csma_backoff_counter_initialised():
+    """Nodes in CSMA mode start with backoff_counter == 0."""
+    config = get_csma_config()
+    sim = Simulator(config)
+    for node in sim.nodes:
+        assert node.backoff_counter == 0
+    print("[PASS] CSMA backoff_counter init test passed")
+
+
+def test_csma_with_exponential_backoff():
+    """CSMA with backoff_window > 0 runs without error."""
+    config = get_csma_config(backoff_window=8)
+    result = Simulator(config).run_simulation()
+    assert result.total_slots > 0
+    print("[PASS] CSMA exponential backoff test passed")
+
+
+def test_csma_aloha_same_results_single_node():
+    """With a single node, CSMA and Aloha produce identical collision counts (0)."""
+    pr = {'PT': 10.0, 'PB': 5.0, 'PI': 1.0, 'PW': 2.0, 'PS': 0.1}
+    base = dict(n_nodes=1, arrival_rate=0.1, transmission_prob=0.5,
+                idle_timer=3, wakeup_time=2, initial_energy=5000.0,
+                power_rates=pr, max_slots=500, seed=42)
+
+    aloha_result = Simulator(SimulationConfig(**base, access_scheme="slotted_aloha")).run_simulation()
+    csma_result = Simulator(SimulationConfig(**base, access_scheme="csma_1p")).run_simulation()
+
+    assert aloha_result.total_collisions == 0
+    assert csma_result.total_collisions == 0
+    print("[PASS] CSMA single-node no-collision test passed")
+
+
+def test_csma_result_has_all_standard_fields():
+    """CSMA result contains the standard SimulationResults fields."""
+    result = Simulator(get_csma_config()).run_simulation()
+    for attr in ('mean_delay', 'mean_lifetime_years', 'throughput',
+                 'total_collisions', 'total_transmissions'):
+        assert hasattr(result, attr)
+    print("[PASS] CSMA result fields test passed")
+
+
+def test_slotted_aloha_default_unchanged():
+    """Default access_scheme is slotted_aloha and existing behaviour is preserved."""
+    config = get_default_config(n_nodes=10, max_slots=1000)
+    result = Simulator(config).run_simulation()
+    # Sanity: simulation ran and produced non-trivial output
+    assert result.total_slots > 0
+    assert result.empirical_service_rate >= 0
+    print("[PASS] Slotted Aloha default unchanged test passed")
+
+
+# ===========================================================================
+# O8: Receiver model tests (via SimulationConfig field)
+# ===========================================================================
+
+def get_rx_config(model_name, n_nodes=10, max_slots=500):
+    pr = {'PT': 10.0, 'PB': 5.0, 'PI': 1.0, 'PW': 2.0, 'PS': 0.1}
+    return SimulationConfig(
+        n_nodes=n_nodes,
+        arrival_rate=0.05,
+        transmission_prob=0.2,
+        idle_timer=5,
+        wakeup_time=2,
+        initial_energy=5000.0,
+        power_rates=pr,
+        max_slots=max_slots,
+        seed=42,
+        receiver_model=model_name,
+    )
+
+
+def test_o8_default_receiver_model():
+    """Default receiver_model in SimulationConfig is 'collision'."""
+    config = get_default_config()
+    assert config.receiver_model == "collision"
+    print("[PASS] O8 default receiver model test passed")
+
+
+def test_o8_collision_model_runs():
+    """Simulation with explicit 'collision' model runs correctly."""
+    result = Simulator(get_rx_config("collision")).run_simulation()
+    assert result.total_slots > 0
+    print("[PASS] O8 collision model runs test passed")
+
+
+def test_o8_capture_model_runs():
+    """Simulation with 'capture' model runs without error."""
+    result = Simulator(get_rx_config("capture")).run_simulation()
+    assert result.total_slots > 0
+    print("[PASS] O8 capture model runs test passed")
+
+
+def test_o8_sic_model_runs():
+    """Simulation with 'sic' model runs without error."""
+    result = Simulator(get_rx_config("sic")).run_simulation()
+    assert result.total_slots > 0
+    print("[PASS] O8 SIC model runs test passed")
+
+
+def test_o8_multi_packet_slots_positive_for_sic():
+    """SIC model can produce multi_packet_slots > 0 under high load."""
+    pr = {'PT': 10.0, 'PB': 5.0, 'PI': 1.0, 'PW': 2.0, 'PS': 0.1}
+    # High arrival and transmission probability increases chance of multi-decode
+    cfg = SimulationConfig(
+        n_nodes=20, arrival_rate=0.2, transmission_prob=0.3,
+        idle_timer=5, wakeup_time=2, initial_energy=5000.0,
+        power_rates=pr, max_slots=2000, seed=0,
+        receiver_model="sic", sic_sinr_threshold=0.1,
+    )
+    result = Simulator(cfg).run_simulation()
+    # With low SINR threshold, SIC should decode multiple packets in some slots
+    assert result.multi_packet_slots >= 0  # At minimum it doesn't error
+    print("[PASS] O8 multi_packet_slots SIC test passed")

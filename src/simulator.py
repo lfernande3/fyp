@@ -11,10 +11,11 @@ import random
 import numpy as np
 from typing import Dict, List, Optional, Tuple, Any
 from collections import defaultdict
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import time
 
 from .node import Node, NodeState
+from .receiver_models import ReceiverModel, resolve_transmissions
 
 
 @dataclass
@@ -30,6 +31,18 @@ class SimulationConfig:
     max_slots: int                # Maximum simulation slots
     seed: Optional[int] = None    # Random seed for reproducibility
     stop_on_first_depletion: bool = False  # Stop when first node depletes
+
+    # O6: Finite retry limits
+    max_retries: Optional[int] = None  # None = infinite retries (default)
+
+    # O7: CSMA protocol
+    access_scheme: str = "slotted_aloha"   # "slotted_aloha" or "csma_1p"
+    backoff_window: int = 0                 # 0 = fixed 1-slot backoff; >0 = random in [1, backoff_window]
+
+    # O8: Advanced receiver models
+    receiver_model: str = "collision"      # "collision", "capture", or "sic"
+    capture_threshold: float = 10.0        # SINR threshold for CAPTURE (linear)
+    sic_sinr_threshold: float = 1.0        # SINR threshold for SIC
 
 
 @dataclass
@@ -72,6 +85,18 @@ class SimulationResults:
     energy_history: Optional[List[float]] = None
     state_history: Optional[List[Dict[str, int]]] = None
 
+    # O6: Drop statistics
+    total_packets_dropped: int = 0
+    mean_drop_rate: float = 0.0
+
+    # O8: SIC multi-packet decoding counter
+    multi_packet_slots: int = 0
+
+    # O9: Age of Information
+    mean_aoi: float = 0.0
+    peak_aoi: float = 0.0
+    aoi_history: Optional[List[float]] = None
+
 
 class Simulator:
     """
@@ -103,7 +128,8 @@ class Simulator:
                 initial_energy=config.initial_energy,
                 idle_timer=config.idle_timer,
                 wakeup_time=config.wakeup_time,
-                power_rates=config.power_rates
+                power_rates=config.power_rates,
+                max_retries=config.max_retries,   # O6
             )
             self.nodes.append(node)
         
@@ -113,7 +139,11 @@ class Simulator:
         self.total_transmissions = 0
         self.total_successes = 0
         self.slots_with_transmissions = 0  # Track slots where at least one node transmitted
-        
+        self.multi_packet_slots = 0        # O8: slots with >1 SIC-decoded packet
+
+        # O9: per-slot network-average AoI samples
+        self.aoi_samples: List[float] = []
+
         # Time series tracking (optional, can be large)
         self.track_history = False
         self.queue_history: List[float] = []
@@ -150,7 +180,12 @@ class Simulator:
         """
         self.track_history = track_history
         start_time = time.time()
-        
+
+        # Pre-resolve O7/O8 options once (avoid repeated string comparisons)
+        use_csma = (self.config.access_scheme == "csma_1p")
+        rx_model = ReceiverModel(self.config.receiver_model)
+        channel_busy_last_slot: bool = False   # O7: CSMA state variable
+
         if verbose:
             print(f"Starting simulation with {self.config.n_nodes} nodes...")
             print(f"Parameters: λ={self.config.arrival_rate}, q={self.config.transmission_prob}, "
@@ -189,25 +224,64 @@ class Simulator:
             for node in self.nodes:
                 if not node.is_depleted() and node.state == NodeState.ACTIVE:
                     if node.get_queue_length() > 0:
-                        if node.attempt_transmit(self.config.transmission_prob):
-                            transmitting_nodes.append(node)
+                        if use_csma:
+                            # O7: CSMA-1P — sense channel before transmitting
+                            if node.backoff_counter > 0:
+                                node.backoff_counter -= 1
+                            elif channel_busy_last_slot:
+                                # Channel was busy last slot — defer
+                                bw = self.config.backoff_window
+                                node.backoff_counter = (
+                                    random.randint(1, bw) if bw > 0 else 1
+                                )
+                            else:
+                                # Channel free — transmit with prob q
+                                if node.attempt_transmit(self.config.transmission_prob):
+                                    transmitting_nodes.append(node)
+                        else:
+                            # Standard slotted Aloha
+                            if node.attempt_transmit(self.config.transmission_prob):
+                                transmitting_nodes.append(node)
             
-            # 3. Collision detection
+            # 3. Collision / success resolution via pluggable receiver model (O8)
             n_transmitting = len(transmitting_nodes)
-            success = (n_transmitting == 1)
-            collision = (n_transmitting > 1)
-            
+            successful_nodes = resolve_transmissions(
+                transmitting_nodes,
+                model=rx_model,
+                capture_threshold=self.config.capture_threshold,
+                sic_sinr_threshold=self.config.sic_sinr_threshold,
+            )
+            n_successful = len(successful_nodes)
+
             # Update statistics
             self.total_transmissions += n_transmitting
             if n_transmitting > 0:
                 self.slots_with_transmissions += 1
+            collision = (n_transmitting > 1 and n_successful == 0)
             if collision:
                 self.total_collisions += 1
-            if success:
-                self.total_successes += 1
-                # Handle successful transmission
-                transmitting_nodes[0].handle_success(slot)
-            
+            self.total_successes += n_successful
+            if n_successful > 1:
+                self.multi_packet_slots += 1   # O8: SIC multi-decode
+
+            for node in successful_nodes:
+                node.handle_success(slot)
+
+            # O6: increment retry counters for nodes that transmitted but failed
+            successful_set = set(id(n) for n in successful_nodes)
+            for node in transmitting_nodes:
+                if id(node) not in successful_set:
+                    node.handle_failed_attempt()
+
+            # O7: update channel-busy flag for next slot
+            channel_busy_last_slot = (n_transmitting > 0)
+
+            # O9: record network-average AoI after all successes are resolved
+            active_nodes = [n for n in self.nodes if not n.is_depleted()]
+            if active_nodes:
+                avg_aoi = sum(n.get_current_aoi(slot) for n in active_nodes) / len(active_nodes)
+                self.aoi_samples.append(avg_aoi)
+
             # 4. Energy consumption for all nodes
             for node in self.nodes:
                 if not node.is_depleted():
@@ -382,6 +456,19 @@ class Simulator:
             if total_active_slots > 0 else 0.0
         )
         
+        # O6: drop statistics
+        total_packets_dropped = sum(node.packets_dropped for node in self.nodes)
+        total_handled = total_deliveries + total_packets_dropped
+        mean_drop_rate = total_packets_dropped / total_handled if total_handled > 0 else 0.0
+
+        # O9: AoI statistics
+        if self.aoi_samples:
+            mean_aoi = float(np.mean(self.aoi_samples))
+            peak_aoi = float(np.percentile(self.aoi_samples, 95))
+        else:
+            mean_aoi = 0.0
+            peak_aoi = 0.0
+
         # Create results object
         results = SimulationResults(
             config=self.config,
@@ -405,7 +492,16 @@ class Simulator:
             node_statistics=node_stats if self.track_history else None,
             queue_length_history=self.queue_history if self.track_history else None,
             energy_history=self.energy_history if self.track_history else None,
-            state_history=self.state_history if self.track_history else None
+            state_history=self.state_history if self.track_history else None,
+            # O6
+            total_packets_dropped=total_packets_dropped,
+            mean_drop_rate=mean_drop_rate,
+            # O8
+            multi_packet_slots=self.multi_packet_slots,
+            # O9
+            mean_aoi=mean_aoi,
+            peak_aoi=peak_aoi,
+            aoi_history=self.aoi_samples[:] if self.track_history else None,
         )
         
         return results
@@ -453,7 +549,7 @@ class BatchSimulator:
             print(f"Running {n_replications} replications...")
         
         for rep in range(n_replications):
-            # Create config with different seed
+            # Create config with different seed (forward all optional fields)
             config = SimulationConfig(
                 n_nodes=self.base_config.n_nodes,
                 arrival_rate=self.base_config.arrival_rate,
@@ -464,7 +560,13 @@ class BatchSimulator:
                 power_rates=self.base_config.power_rates,
                 max_slots=self.base_config.max_slots,
                 seed=rep,  # Different seed for each replication
-                stop_on_first_depletion=self.base_config.stop_on_first_depletion
+                stop_on_first_depletion=self.base_config.stop_on_first_depletion,
+                max_retries=self.base_config.max_retries,
+                access_scheme=self.base_config.access_scheme,
+                backoff_window=self.base_config.backoff_window,
+                receiver_model=self.base_config.receiver_model,
+                capture_threshold=self.base_config.capture_threshold,
+                sic_sinr_threshold=self.base_config.sic_sinr_threshold,
             )
             
             # Run simulation
@@ -511,7 +613,7 @@ class BatchSimulator:
             if verbose:
                 print(f"\n{param_name} = {value}")
             
-            # Create modified config
+            # Create modified config (include all optional extension fields)
             config_dict = {
                 'n_nodes': self.base_config.n_nodes,
                 'arrival_rate': self.base_config.arrival_rate,
@@ -521,7 +623,13 @@ class BatchSimulator:
                 'initial_energy': self.base_config.initial_energy,
                 'power_rates': self.base_config.power_rates,
                 'max_slots': self.base_config.max_slots,
-                'stop_on_first_depletion': self.base_config.stop_on_first_depletion
+                'stop_on_first_depletion': self.base_config.stop_on_first_depletion,
+                'max_retries': self.base_config.max_retries,
+                'access_scheme': self.base_config.access_scheme,
+                'backoff_window': self.base_config.backoff_window,
+                'receiver_model': self.base_config.receiver_model,
+                'capture_threshold': self.base_config.capture_threshold,
+                'sic_sinr_threshold': self.base_config.sic_sinr_threshold,
             }
             
             # Update parameter
