@@ -73,6 +73,17 @@ from src.optimization import (
 )
 from src.independence import IndependenceAnalyzer
 from src.validation_3gpp import run_o4_experiments, ThreeGPPAlignment, DesignGuidelines
+from src.validation import AnalyticalValidator
+from src.baselines import (
+    SLOT_DURATION_MS,
+    GENERIC_LITERATURE_BASELINE,
+    NB_IOT_BASELINE,
+    NR_MMTC_BASELINE,
+    battery_energy_mwh,
+    q_one_over_n,
+    seconds_to_slots,
+    slots_to_seconds,
+)
 
 # ---------------------------------------------------------------------------
 # Global matplotlib style
@@ -96,7 +107,12 @@ COLORS = plt.cm.tab10.colors
 OUTDIR: Path = ROOT / "report" / "figures"
 OUTDIR.mkdir(parents=True, exist_ok=True)
 
-SLOT_MS = 6.0  # slot duration in ms
+SLOT_MS = SLOT_DURATION_MS
+GENERIC_INITIAL_ENERGY_MWH = GENERIC_LITERATURE_BASELINE.initial_energy_mwh
+LIFETIME_VIS_BATTERY_TYPE = "lipo_large"
+LIFETIME_VIS_ENERGY_MWH = PowerModel.create_battery_config(
+    LIFETIME_VIS_BATTERY_TYPE
+).get_energy_mwh()
 
 
 # ===========================================================================
@@ -185,24 +201,53 @@ def savefig(name: str, fig: plt.Figure | None = None) -> None:
 
 
 def base_config(
-    n: int = 100,
-    lam: float = 0.01,
-    q: float = 0.01,
-    ts: int = 10,
-    tw: int = 2,
-    energy: float = 5000.0,
+    n: int = GENERIC_LITERATURE_BASELINE.n_nodes,
+    lam: float = GENERIC_LITERATURE_BASELINE.arrival_rate,
+    q: float | None = None,
+    ts: int | None = None,
+    tw: int = GENERIC_LITERATURE_BASELINE.wakeup_time,
+    energy: float | None = None,
     slots: int = 50_000,
     seed: int | None = None,
+    power_profile: PowerProfile = GENERIC_LITERATURE_BASELINE.power_profile,
+    battery_type: str = GENERIC_LITERATURE_BASELINE.battery_type,
 ) -> SimulationConfig:
-    return SimulationConfig(
+    return GENERIC_LITERATURE_BASELINE.build_config(
         n_nodes=n,
         arrival_rate=lam,
-        transmission_prob=q,
-        idle_timer=ts,
+        transmission_prob=q_one_over_n(n) if q is None else q,
+        idle_timer=GENERIC_LITERATURE_BASELINE.idle_timer_slots if ts is None else ts,
         wakeup_time=tw,
-        initial_energy=energy,
-        power_rates=PowerModel.get_profile(PowerProfile.GENERIC_LOW),
+        initial_energy=energy if energy is not None else battery_energy_mwh(battery_type),
+        power_profile=power_profile,
         max_slots=slots,
+        seed=seed,
+    )
+
+
+def timer_seconds(values: list[int]) -> list[float]:
+    return [slots_to_seconds(v) for v in values]
+
+
+def lifetime_vis_config(
+    *,
+    n: int,
+    lam: float,
+    q: float | None,
+    ts: int,
+    tw: int,
+    slots: int,
+    seed: int | None = None,
+) -> SimulationConfig:
+    """Use a larger battery budget for lifetime-interpretation figures."""
+    return base_config(
+        n=n,
+        lam=lam,
+        q=q,
+        ts=ts,
+        tw=tw,
+        energy=LIFETIME_VIS_ENERGY_MWH,
+        slots=slots,
         seed=seed,
     )
 
@@ -305,7 +350,7 @@ def sec_fig2():
             "tx attempt (q)", ha="center", fontsize=8,
             color="#2e7d32", style="italic")
 
-    ax.set_title("Fig 2.1 — MTD Node State Transition Diagram", pad=10)
+    ax.set_title("Fig 2.1 - MTD Node State Transition Diagram", pad=10)
     savefig("fig2_1_state_diagram", fig)
 
     # ---- Fig 2.2: Software architecture — layered with full connections ----
@@ -385,7 +430,7 @@ def sec_fig2():
     arr(ax, bot(bBatch), top(bInd), "#607D8B", rad= 0.0,  lbl="factorial\nresults")
     arr(ax, bot(bBatch), top(bVal), "#607D8B", rad=-0.15, lbl="3GPP\nresults")
 
-    ax.set_title("Fig 2.2 — Software Architecture Overview", pad=10, fontsize=13)
+    ax.set_title("Fig 2.2 - Software Architecture Overview", pad=10, fontsize=13)
     savefig("fig2_2_architecture", fig)
 
 
@@ -395,15 +440,16 @@ def sec_fig2():
 def sec_val(quick: bool):
     # quick: 3 reps, 10k slots — enough for smooth validation scatter
     n_reps    = 3 if quick else 20
-    max_slots = 10_000 if quick else 200_000
+    max_slots = 20_000 if quick else 120_000
 
     # 5x more n-values for scatter plots
     n_values = [5, 10, 15, 20, 30, 50] if quick else [5, 10, 15, 20, 30, 50, 75, 100]
-    lam, q_base, ts, tw = 0.005, 0.05, 5, 2
+    lam, q_base = GENERIC_LITERATURE_BASELINE.arrival_rate, 0.05
+    ts, tw = GENERIC_LITERATURE_BASELINE.idle_timer_slots, GENERIC_LITERATURE_BASELINE.wakeup_time
 
     # 5x more convergence checkpoints
-    conv_slots = [500, 1_000, 2_000, 5_000, 8_000, 10_000, 15_000] if quick else \
-                 [500, 1_000, 2_500, 5_000, 10_000, 25_000, 50_000, 100_000, 200_000]
+    conv_slots = [2_000, 5_000, 10_000, 15_000, 20_000] if quick else \
+                 [5_000, 10_000, 20_000, 40_000, 60_000, 80_000, 120_000]
     conv_reps  = 3 if quick else 15
 
     # One prog.step() per n_value and per conv_slot checkpoint
@@ -416,10 +462,11 @@ def sec_val(quick: bool):
         q = min(q_base, 1.0 / n)
         cfg = base_config(n=n, lam=lam, q=q, ts=ts, tw=tw, slots=max_slots)
         reps = run_batch(cfg, n_reps)
-        ep  = float(np.mean([r.empirical_success_prob for r in reps]))
-        emu = float(np.mean([r.empirical_service_rate for r in reps]))
-        ap  = MetricsCalculator.compute_analytical_success_probability(n, q)
-        amu = MetricsCalculator.compute_analytical_service_rate(ap, lam, tw)
+        validations = [AnalyticalValidator.validate_results(cfg, r, tolerance=0.2) for r in reps]
+        ep = float(np.mean([v["success_probability"]["empirical"] for v in validations]))
+        emu = float(np.mean([v["service_rate"]["empirical"] for v in validations]))
+        ap = float(np.mean([v["success_probability"]["analytical"] for v in validations]))
+        amu = float(np.mean([v["service_rate"]["analytical"] for v in validations]))
         emp_p.append(ep); anal_p.append(ap)
         emp_mu.append(emu); anal_mu.append(amu)
         prog.step(f"n={n}", f"p_emp={ep:.4f} p_ana={ap:.4f}  mu_emp={emu:.5f}")
@@ -429,11 +476,12 @@ def sec_val(quick: bool):
     lims = [0, max(max(emp_p), max(anal_p)) * 1.15]
     ax.plot(lims, lims, "k--", lw=1, label="y = x")
     ax.fill_between(lims, [v*.95 for v in lims], [v*1.05 for v in lims],
-                    alpha=0.12, color="gray", label="±5%")
+                    alpha=0.12, color="gray", label="+/-5%")
     for i, n in enumerate(n_values):
         ax.scatter(anal_p[i], emp_p[i], s=80, color=COLORS[i % 10], zorder=5, label=f"n={n}")
-    ax.set_xlabel("Analytical p"); ax.set_ylabel("Empirical p")
-    ax.set_title("Fig 3.1 — Empirical vs. Analytical Success Probability p")
+    ax.set_xlabel("Analytical per-node success probability p")
+    ax.set_ylabel("Empirical per-node success probability")
+    ax.set_title("Fig 3.1 - Per-Node Success Probability Validation")
     ax.legend(ncol=2, fontsize=9); savefig("fig3_1_p_validation", fig)
 
     # Fig 3.2 — μ scatter
@@ -441,16 +489,16 @@ def sec_val(quick: bool):
     lims = [0, max(max(emp_mu), max(anal_mu)) * 1.15]
     ax.plot(lims, lims, "k--", lw=1, label="y = x")
     ax.fill_between(lims, [v*.95 for v in lims], [v*1.05 for v in lims],
-                    alpha=0.12, color="gray", label="±5%")
+                    alpha=0.12, color="gray", label="+/-5%")
     for i, n in enumerate(n_values):
         ax.scatter(anal_mu[i], emp_mu[i], s=80, color=COLORS[i % 10], zorder=5, label=f"n={n}")
-    ax.set_xlabel("Analytical μ"); ax.set_ylabel("Empirical μ")
-    ax.set_title("Fig 3.2 — Empirical vs. Analytical Service Rate μ")
+    ax.set_xlabel("Analytical service rate mu"); ax.set_ylabel("Empirical service rate mu")
+    ax.set_title("Fig 3.2 - Empirical vs. Analytical Service Rate mu")
     ax.legend(ncol=2, fontsize=9); savefig("fig3_2_mu_validation", fig)
 
     # Fig 3.3 — convergence
-    n_conv, q_conv = 50, 0.02
-    ap_c  = MetricsCalculator.compute_analytical_success_probability(n_conv, q_conv)
+    n_conv, q_conv = 50, min(q_base, 1.0 / 50)
+    ap_c = MetricsCalculator.compute_analytical_success_probability(n_conv, q_conv)
     amu_c = MetricsCalculator.compute_analytical_service_rate(ap_c, lam, tw)
     try:
         ad_c = MetricsCalculator.compute_analytical_mean_delay(lam, amu_c)
@@ -469,8 +517,8 @@ def sec_val(quick: bool):
     fig, ax = plt.subplots()
     ax.loglog(conv_slots, conv_errors, "o-", color=COLORS[0])
     ax.set_xlabel("Number of simulation slots")
-    ax.set_ylabel("|T̄_sim − T̄_analytical| (slots)")
-    ax.set_title("Fig 3.3 — Convergence of Mean Delay Estimate")
+    ax.set_ylabel("|T_sim - T_analytical| (slots)")
+    ax.set_title("Fig 3.3 - Convergence of Mean Delay Estimate")
     savefig("fig3_3_convergence", fig)
     prog.finish()
 
@@ -480,24 +528,29 @@ def sec_val(quick: bool):
 # ============================================================================
 def sec_o2(quick: bool):
     # quick: n=50, 3 reps, 8k slots ≈ 1 s/sim → 350 steps × 3s ≈ 18 min total
-    n_reps    = 3 if quick else 20
-    max_slots = 8_000 if quick else 100_000
-    n, lam, tw = 50 if quick else 100, 0.01, 2
+    n_reps    = 2 if quick else 20
+    max_slots = 8_000 if quick else 120_000
+    n = 50 if quick else GENERIC_LITERATURE_BASELINE.n_nodes
+    lam = GENERIC_LITERATURE_BASELINE.arrival_rate
+    tw = GENERIC_LITERATURE_BASELINE.wakeup_time
 
     # 5x more sweep points on all axes
-    ts_list  = [1, 5, 10, 30, 50]          # stratified colors (keep manageable)
-    q_list   = [0.005, 0.01, 0.02, 0.05, 0.1]
-    q_sweep  = list(np.linspace(0.005, 0.15, 30 if quick else 50))
+    ts_list  = [seconds_to_slots(v) for v in [0.5, 2.0, 10.0, 30.0, 120.0]]
+    q_list   = [0.002, 0.005, 0.01, 0.02, 0.05]
+    q_sweep  = list(np.linspace(0.002, 0.05, 12 if quick else 50))
     ts_sweep = list(np.unique(np.round(
-        np.geomspace(1, 50, 20 if quick else 35)).astype(int)))  # log-spaced
-    lam_sweep = list(np.linspace(0.001, 0.05, 30 if quick else 50))
+        np.geomspace(seconds_to_slots(0.5), seconds_to_slots(120.0), 12 if quick else 35)
+    ).astype(int)))
+    lam_sweep_fig8 = list(np.linspace(0.001, 0.05, 30 if quick else 50))
     n_vals_8  = [10, 25, 50, 100]           # 4 curves for Fig 3.8
+    ts_list_s = timer_seconds(ts_list)
+    ts_sweep_s = timer_seconds(ts_sweep)
 
     # One prog.step() per (ts,q) pair + per (q,ts) pair + per (n,lam) pair
     total_sims = (
         len(ts_list) * len(q_sweep)
         + len(q_list) * len(ts_sweep)
-        + len(n_vals_8) * len(lam_sweep)
+        + len(n_vals_8) * len(lam_sweep_fig8)
     )
     prog = Progress(total_sims, "Figs 3.4-3.8  Parameter impact (O2)")
 
@@ -506,7 +559,7 @@ def sec_o2(quick: bool):
     for ts in ts_list:
         ds, ls, dstds = [], [], []
         for q in q_sweep:
-            cfg = base_config(n=n, lam=lam, q=q, ts=ts, tw=tw, slots=max_slots)
+            cfg = lifetime_vis_config(n=n, lam=lam, q=q, ts=ts, tw=tw, slots=max_slots)
             d, l, sd = mean_results(run_batch(cfg, n_reps))
             ds.append(d); ls.append(l); dstds.append(sd)
             prog.step(f"ts={ts:2d} q={q:.4f}", f"T={d:.0f}  L={l:.2f}yr")
@@ -516,22 +569,22 @@ def sec_o2(quick: bool):
     fig, ax = plt.subplots()
     for i, ts in enumerate(ts_list):
         ys = delay_by_ts[ts]; es = dstd_by_ts[ts]
-        ax.plot(q_sweep, ys, "-", color=COLORS[i], label=f"ts={ts}", lw=1.6)
+        ax.plot(q_sweep, ys, "-", color=COLORS[i], label=f"ts={slots_to_seconds(ts):.1f}s", lw=1.6)
         ax.fill_between(q_sweep, [y-1.96*e for y,e in zip(ys,es)],
                         [y+1.96*e for y,e in zip(ys,es)], alpha=0.10, color=COLORS[i])
     ax.set_xlabel("Transmission probability q")
-    ax.set_ylabel("Mean queueing delay T̄ (slots)")
-    ax.set_title("Fig 3.4 — T̄ vs. q for multiple ts values")
+    ax.set_ylabel("Mean queueing delay T (slots)")
+    ax.set_title("Fig 3.4 - Mean Delay vs. q for Multiple ts Values")
     ax.legend(title="Idle timer ts"); savefig("fig3_4_delay_vs_q", fig)
 
     # Fig 3.5 — L̄ vs q
     fig, ax = plt.subplots()
     for i, ts in enumerate(ts_list):
         lt = [v if v != float("inf") else np.nan for v in lt_by_ts[ts]]
-        ax.plot(q_sweep, lt, "-", color=COLORS[i], label=f"ts={ts}", lw=1.6)
+        ax.plot(q_sweep, lt, "-", color=COLORS[i], label=f"ts={slots_to_seconds(ts):.1f}s", lw=1.6)
     ax.set_xlabel("Transmission probability q")
-    ax.set_ylabel("Expected lifetime L̄ (years)")
-    ax.set_title("Fig 3.5 — L̄ vs. q for multiple ts values")
+    ax.set_ylabel("Expected lifetime (years)")
+    ax.set_title("Fig 3.5 - Expected Lifetime vs. q for Multiple ts Values")
     ax.legend(title="Idle timer ts"); savefig("fig3_5_lifetime_vs_q", fig)
 
     # --- ts sweep (figs 3.6, 3.7) ---
@@ -539,7 +592,7 @@ def sec_o2(quick: bool):
     for q in q_list:
         ds, ls = [], []
         for ts in ts_sweep:
-            cfg = base_config(n=n, lam=lam, q=q, ts=ts, tw=tw, slots=max_slots)
+            cfg = lifetime_vis_config(n=n, lam=lam, q=q, ts=ts, tw=tw, slots=max_slots)
             d, l, _ = mean_results(run_batch(cfg, n_reps))
             ds.append(d); ls.append(l)
             prog.step(f"q={q:.4f} ts={ts:2d}", f"T={d:.0f}  L={l:.2f}yr")
@@ -548,35 +601,42 @@ def sec_o2(quick: bool):
     # Fig 3.6 — T̄ vs ts
     fig, ax = plt.subplots()
     for i, q in enumerate(q_list):
-        ax.plot(ts_sweep, delay_by_q[q], "-", color=COLORS[i], label=f"q={q}", lw=1.6)
-    ax.set_xlabel("Idle timer ts (slots)")
-    ax.set_ylabel("Mean queueing delay T̄ (slots)")
-    ax.set_title("Fig 3.6 — T̄ vs. ts for multiple q values")
+        ax.plot(ts_sweep_s, delay_by_q[q], "-", color=COLORS[i], label=f"q={q}", lw=1.6)
+    ax.set_xlabel("Idle timer ts (seconds)")
+    ax.set_ylabel("Mean queueing delay T (slots)")
+    ax.set_title("Fig 3.6 - Mean Delay vs. ts for Multiple q Values")
     ax.legend(title="Tx prob q"); savefig("fig3_6_delay_vs_ts", fig)
 
     # Fig 3.7 — L̄ vs ts
     fig, ax = plt.subplots()
     for i, q in enumerate(q_list):
         lt = [v if v != float("inf") else np.nan for v in lt_by_q[q]]
-        ax.plot(ts_sweep, lt, "-", color=COLORS[i], label=f"q={q}", lw=1.6)
-    ax.set_xlabel("Idle timer ts (slots)")
-    ax.set_ylabel("Expected lifetime L̄ (years)")
-    ax.set_title("Fig 3.7 — L̄ vs. ts for multiple q values")
+        ax.plot(ts_sweep_s, lt, "-", color=COLORS[i], label=f"q={q}", lw=1.6)
+    ax.set_xlabel("Idle timer ts (seconds)")
+    ax.set_ylabel("Expected lifetime (years)")
+    ax.set_title("Fig 3.7 - Expected Lifetime vs. ts for Multiple q Values")
     ax.legend(title="Tx prob q"); savefig("fig3_7_lifetime_vs_ts", fig)
 
     # --- λ sweep (fig 3.8) ---
     fig, ax = plt.subplots()
     for i, nn in enumerate(n_vals_8):
         tputs = []
-        for lm in lam_sweep:
-            cfg = base_config(n=nn, lam=lm, q=1.0/nn, ts=10, tw=2, slots=max_slots)
+        for lm in lam_sweep_fig8:
+            cfg = base_config(
+                n=nn,
+                lam=lm,
+                q=q_one_over_n(nn),
+                ts=GENERIC_LITERATURE_BASELINE.idle_timer_slots,
+                tw=GENERIC_LITERATURE_BASELINE.wakeup_time,
+                slots=max_slots,
+            )
             reps = run_batch(cfg, n_reps)
             tputs.append(float(np.mean([r.throughput for r in reps])))
             prog.step(f"n={nn} lam={lm:.4f}", f"tput={tputs[-1]:.5f}")
-        ax.plot(lam_sweep, tputs, "-", color=COLORS[i], label=f"n={nn}", lw=1.6)
-    ax.set_xlabel("Arrival rate λ (packets/slot)")
+        ax.plot(lam_sweep_fig8, tputs, "-", color=COLORS[i], label=f"n={nn}", lw=1.6)
+    ax.set_xlabel("Arrival rate lambda (packets/slot)")
     ax.set_ylabel("Throughput (packets/slot)")
-    ax.set_title("Fig 3.8 — Throughput vs. λ for varying n")
+    ax.set_title("Fig 3.8 - Throughput vs. lambda for Varying n")
     ax.legend(title="Nodes n"); savefig("fig3_8_throughput_vs_lambda", fig)
     prog.finish()
 
@@ -586,16 +646,16 @@ def sec_o2(quick: bool):
 # ============================================================================
 def sec_o3(quick: bool):
     # quick: n=50, 3 reps, 8k slots → grid 9×15 = 135 steps × ~3s ≈ 7 min
-    n_reps    = 3 if quick else 15
-    max_slots = 8_000 if quick else 80_000
-    n, lam, tw = 50 if quick else 100, 0.01, 2
+    n_reps    = 2 if quick else 15
+    max_slots = 8_000 if quick else 120_000
+    n = 50 if quick else GENERIC_LITERATURE_BASELINE.n_nodes
+    lam = GENERIC_LITERATURE_BASELINE.arrival_rate
+    tw = GENERIC_LITERATURE_BASELINE.wakeup_time
 
     # 5x denser grid (15q × 10ts vs old 6q × 6ts)
-    q_sweep  = list(np.linspace(0.005, 0.15, 15 if quick else 25))
-    ts_sweep = [1, 2, 5, 8, 10, 15, 20, 30, 50] if quick else \
-               [1, 2, 3, 5, 7, 10, 15, 20, 30, 40, 50]
-    ts_compare = [1, 3, 5, 10, 15, 20, 30] if quick else \
-                 [1, 2, 3, 5, 7, 10, 15, 20, 30, 40, 50]
+    q_sweep  = list(np.linspace(0.002, 0.05, 10 if quick else 25))
+    ts_sweep = [seconds_to_slots(v) for v in ([0.5, 2, 10, 30] if quick else [0.5, 1, 2, 5, 10, 30, 60, 120])]
+    ts_compare = ts_sweep
 
     # One prog.step() per grid cell + 3 scenario runs + per (ts × 2 schemes)
     total_sims = (
@@ -611,7 +671,7 @@ def sec_o3(quick: bool):
 
     for i, ts in enumerate(ts_sweep):
         for j, q in enumerate(q_sweep):
-            cfg = base_config(n=n, lam=lam, q=q, ts=ts, tw=tw, slots=max_slots)
+            cfg = lifetime_vis_config(n=n, lam=lam, q=q, ts=ts, tw=tw, slots=max_slots)
             d, l, _ = mean_results(run_batch(cfg, n_reps))
             delay_mat[i, j] = d
             lt_mat[i, j]    = l if l != float("inf") else np.nan
@@ -625,26 +685,27 @@ def sec_o3(quick: bool):
     for i, ts in enumerate(ts_sweep):
         for j, q in enumerate(q_sweep):
             p = q * (1-q)**(n-1)
-            denom = 1 + p*ts + p*tw
-            mu_mat[i, j] = p / denom if denom > 0 else 0.0
+            mu_mat[i, j] = MetricsCalculator.compute_analytical_service_rate(p, lam, tw)
+
+    ts_arr_s = np.array(timer_seconds(ts_sweep))
 
     # Fig 3.9 — T̄ heatmap
     fig, ax = plt.subplots(figsize=(7.5, 5))
-    im = ax.pcolormesh(q_arr, ts_arr, delay_mat, cmap="viridis_r", shading="auto")
-    plt.colorbar(im, ax=ax, label="T̄ (slots)")
-    ax.set_xlabel("q"); ax.set_ylabel("ts")
-    ax.set_title("Fig 3.9 — Mean Delay T̄ in (q, ts) Plane")
+    im = ax.pcolormesh(q_arr, ts_arr_s, delay_mat, cmap="viridis_r", shading="auto")
+    plt.colorbar(im, ax=ax, label="Mean delay T (slots)")
+    ax.set_xlabel("q"); ax.set_ylabel("Idle timer ts (seconds)")
+    ax.set_title("Fig 3.9 - Mean Delay in the (q, ts) Plane")
     savefig("fig3_9_delay_heatmap", fig)
 
     # Fig 3.10 — L̄ heatmap + stability contour
     fig, ax = plt.subplots(figsize=(7.5, 5))
-    im = ax.pcolormesh(q_arr, ts_arr, lt_mat, cmap="plasma", shading="auto")
-    plt.colorbar(im, ax=ax, label="L̄ (years)")
-    CS = ax.contour(q_arr, ts_arr, mu_mat, levels=[lam], colors="white",
+    im = ax.pcolormesh(q_arr, ts_arr_s, lt_mat, cmap="plasma", shading="auto")
+    plt.colorbar(im, ax=ax, label="Expected lifetime (years)")
+    CS = ax.contour(q_arr, ts_arr_s, mu_mat, levels=[lam], colors="white",
                     linestyles="--", linewidths=2)
-    ax.clabel(CS, fmt="λ=μ", fontsize=9)
-    ax.set_xlabel("q"); ax.set_ylabel("ts")
-    ax.set_title("Fig 3.10 — Expected Lifetime L̄ in (q, ts) Plane")
+    ax.clabel(CS, fmt="lambda=mu", fontsize=9)
+    ax.set_xlabel("q"); ax.set_ylabel("Idle timer ts (seconds)")
+    ax.set_title("Fig 3.10 - Expected Lifetime in the (q, ts) Plane")
     savefig("fig3_10_lifetime_heatmap", fig)
 
     # Fig 3.11 — Pareto frontier
@@ -664,22 +725,22 @@ def sec_o3(quick: bool):
     ax.plot(xs_d,  ys_d,  "s--", color=COLORS[1], label="Min-delay q*")
     for d, l, ts in pareto_lt:
         if not np.isnan(l):
-            ax.annotate(f"ts={ts}", (d, l), textcoords="offset points",
+            ax.annotate(f"ts={slots_to_seconds(ts):.1f}s", (d, l), textcoords="offset points",
                         xytext=(3, 2), fontsize=7)
-    ax.set_xlabel("Mean delay T̄ (slots)"); ax.set_ylabel("Expected lifetime L̄ (years)")
-    ax.set_title("Fig 3.11 — Pareto Frontier: L̄ vs. T̄")
+    ax.set_xlabel("Mean delay T (slots)"); ax.set_ylabel("Expected lifetime (years)")
+    ax.set_title("Fig 3.11 - Pareto Frontier: Lifetime vs. Delay")
     ax.legend(); savefig("fig3_11_pareto", fig)
 
     # Scenarios (fig 3.12)
     scenarios = {
-        "Low-Latency":  (2.0/n, 1),
-        "Balanced":     (1.0/n, 10),
-        "Battery-Life": (0.5/n, 50),
+        "Low-Latency":  (2.0/n, seconds_to_slots(0.5)),
+        "Balanced":     (1.0/n, seconds_to_slots(5.0)),
+        "Battery-Life": (0.5/n, seconds_to_slots(10.0)),
     }
     sc_names, sc_delays, sc_lts = [], [], []
     baseline_d = baseline_l = None
     for sname, (q, ts) in scenarios.items():
-        cfg = base_config(n=n, lam=lam, q=q, ts=ts, tw=tw, slots=max_slots)
+        cfg = lifetime_vis_config(n=n, lam=lam, q=q, ts=ts, tw=tw, slots=max_slots)
         d, l, _ = mean_results(run_batch(cfg, n_reps))
         sc_names.append(sname); sc_delays.append(d)
         sc_lts.append(l if l != float("inf") else np.nan)
@@ -693,12 +754,12 @@ def sec_o3(quick: bool):
                  for l in sc_lts]
     x = np.arange(len(sc_names))
     fig, ax = plt.subplots(figsize=(7, 4.5))
-    ax.bar(x - 0.2, pct_delay, 0.4, label="Δ T̄ (%)", color=COLORS[0], alpha=0.8)
-    ax.bar(x + 0.2, pct_lt,    0.4, label="Δ L̄ (%)", color=COLORS[1], alpha=0.8)
+    ax.bar(x - 0.2, pct_delay, 0.4, label="Delta delay (%)", color=COLORS[0], alpha=0.8)
+    ax.bar(x + 0.2, pct_lt,    0.4, label="Delta lifetime (%)", color=COLORS[1], alpha=0.8)
     ax.axhline(0, color="black", lw=0.8)
     ax.set_xticks(x); ax.set_xticklabels(sc_names)
     ax.set_ylabel("% change vs. Balanced baseline")
-    ax.set_title("Fig 3.12 — Scenario Comparison vs. Balanced Baseline")
+    ax.set_title("Fig 3.12 - Scenario Comparison vs. Balanced Baseline")
     ax.legend(); savefig("fig3_12_scenario_bar", fig)
 
     # On-demand vs duty-cycling (fig 3.13)
@@ -731,16 +792,16 @@ def sec_o3(quick: bool):
     axes[0].bar(x - 0.2, od_delays, 0.4, color=COLORS[0], alpha=0.85)
     axes[0].bar(x + 0.2, dc_delays, 0.4, color=COLORS[2], alpha=0.85)
     axes[0].set_xticks(x)
-    axes[0].set_xticklabels([f"ts={t}" for t in ts_compare])
-    axes[0].set_ylabel("T̄ (slots)")
-    axes[0].set_title("Mean Delay T̄")
+    axes[0].set_xticklabels([f"{slots_to_seconds(t):.1f}s" for t in ts_compare])
+    axes[0].set_ylabel("Mean delay T (slots)")
+    axes[0].set_title("Mean Delay")
 
     axes[1].bar(x - 0.2, od_lts, 0.4, color=COLORS[0], alpha=0.85)
     axes[1].bar(x + 0.2, dc_lts, 0.4, color=COLORS[2], alpha=0.85)
     axes[1].set_xticks(x)
-    axes[1].set_xticklabels([f"ts={t}" for t in ts_compare])
-    axes[1].set_ylabel("L̄ (years)")
-    axes[1].set_title("Expected Lifetime L̄")
+    axes[1].set_xticklabels([f"{slots_to_seconds(t):.1f}s" for t in ts_compare])
+    axes[1].set_ylabel("Expected lifetime (years)")
+    axes[1].set_title("Expected Lifetime")
 
     # Single shared legend placed below both subplots — no overlap with bars
     legend_patches = [
@@ -751,7 +812,7 @@ def sec_o3(quick: bool):
                ncol=2, fontsize=10, frameon=True,
                bbox_to_anchor=(0.5, -0.04))
 
-    fig.suptitle("Fig 3.13 — On-Demand Sleep vs. Duty-Cycling", fontsize=13)
+    fig.suptitle("Fig 3.13 - On-Demand Sleep vs. Duty-Cycling", fontsize=13)
     fig.tight_layout(rect=[0, 0.06, 1, 0.96])
     savefig("fig3_13_duty_vs_ondemand", fig)
     prog.finish()
@@ -762,22 +823,24 @@ def sec_o3(quick: bool):
 # ============================================================================
 def sec_o4(quick: bool):
     # quick: n=50, 3 reps, 8k slots → 4×25 + 10×25 + 2×5 = 360 steps × ~2s ≈ 12 min
-    n_reps    = 3 if quick else 15
-    max_slots = 8_000 if quick else 80_000
-    n, tw = 50 if quick else 100, 2
+    n_reps    = 2 if quick else 15
+    max_slots = 20_000 if quick else 200_000
+    n, tw = 50 if quick else GENERIC_LITERATURE_BASELINE.n_nodes, GENERIC_LITERATURE_BASELINE.wakeup_time
 
-    ts_settings  = [5, 10, 30, 60]
-    t3324_labels = ["T3324=30ms", "T3324=60ms", "T3324=180ms", "T3324=360ms"]
+    t3324_values_s = [2.0, 10.0, 60.0, 360.0]
+    ts_settings = [seconds_to_slots(v) for v in t3324_values_s]
+    t3324_labels = [f"T3324={v:g} s" for v in t3324_values_s]
+    profiles = [PowerProfile.NB_IOT, PowerProfile.NR_MMTC]
 
     # 5x more lambda points
-    lam_sweep    = list(np.linspace(0.001, 0.04, 25 if quick else 50))
+    lam_sweep    = list(np.geomspace(1e-6, 5e-4, 10 if quick else 50))
     # 5x more q values for q* vs n search
-    q_sweep_16   = list(np.linspace(0.005, 0.3, 25 if quick else 50))
+    q_sweep_16   = list(np.linspace(0.002, 0.05, 12 if quick else 50))
     # 5x more n values for q* vs n
-    n_vals_16    = [5, 10, 15, 20, 30, 50, 75, 100, 150, 200] if quick else \
+    n_vals_16    = [10, 20, 50, 100, 200] if quick else \
                    [5, 10, 15, 20, 30, 50, 75, 100, 150, 200, 300, 500]
     # More ts for 3GPP scatter
-    ts_scatter   = [5, 10, 15, 20, 30]
+    ts_scatter   = [2.0, 10.0, 60.0] if quick else [2.0, 10.0, 60.0, 360.0]
 
     # One prog.step() per (ts,lam) + per (n,q) + per (profile,ts)
     total_sims = (
@@ -802,16 +865,16 @@ def sec_o4(quick: bool):
     fig, ax = plt.subplots()
     for i, label in enumerate(t3324_labels):
         ax.plot(lam_sweep, lt_curves[label], "-", color=COLORS[i], label=label, lw=1.6)
-    ax.set_xlabel("Arrival rate λ"); ax.set_ylabel("Expected lifetime L̄ (years)")
-    ax.set_title("Fig 3.14 — L̄ vs. λ for Four T3324 Timer Settings")
+    ax.set_xlabel("Arrival rate lambda"); ax.set_ylabel("Expected lifetime (years)")
+    ax.set_title("Fig 3.14 - Lifetime vs. lambda for Four T3324 Timer Settings")
     ax.legend(); savefig("fig3_14_lifetime_vs_lambda_t3324", fig)
 
     fig, ax = plt.subplots()
     for i, label in enumerate(t3324_labels):
         ax.plot(lam_sweep, d_curves[label], "-", color=COLORS[i], label=label, lw=1.6)
     ax.axhline(1.0, color="red", linestyle=":", lw=1.5, label="1 s SLA")
-    ax.set_xlabel("Arrival rate λ"); ax.set_ylabel("Mean delay T̄ (seconds)")
-    ax.set_title("Fig 3.15 — T̄ vs. λ for Four T3324 Timer Settings")
+    ax.set_xlabel("Arrival rate lambda"); ax.set_ylabel("Mean delay T (seconds)")
+    ax.set_title("Fig 3.15 - Delay vs. lambda for Four T3324 Timer Settings")
     ax.legend(); savefig("fig3_15_delay_vs_lambda_t3324", fig)
 
     # --- Fig 3.16: q* vs n ---
@@ -819,7 +882,14 @@ def sec_o4(quick: bool):
     for nn in n_vals_16:
         best_q_d, best_q_l, best_d, best_l = None, None, float("inf"), 0.0
         for q in q_sweep_16:
-            cfg = base_config(n=nn, lam=0.01, q=q, ts=10, tw=tw, slots=max_slots)
+            cfg = base_config(
+                n=nn,
+                lam=NB_IOT_BASELINE.arrival_rate,
+                q=q,
+                ts=seconds_to_slots(10.0),
+                tw=tw,
+                slots=max_slots,
+            )
             d, l, _ = mean_results(run_batch(cfg, n_reps))
             if d < best_d:
                 best_d = d; best_q_d = q
@@ -833,31 +903,34 @@ def sec_o4(quick: bool):
     ax.plot(n_vals_16, q_stars_delay, "o-",  color=COLORS[0], label="q* (min delay)")
     ax.plot(n_vals_16, q_stars_lt,    "s--", color=COLORS[1], label="q* (max lifetime)")
     ax.set_xlabel("Number of nodes n"); ax.set_ylabel("Optimal q*")
-    ax.set_title("Fig 3.16 — Optimal q* vs. Number of Nodes")
+    ax.set_title("Fig 3.16 - Optimal q* vs. Number of Nodes")
     ax.legend(); savefig("fig3_16_qstar_vs_n", fig)
 
     # --- Fig 3.17: NB-IoT vs NR mMTC scatter ---
-    profiles = [PowerProfile.NB_IOT, PowerProfile.NR_MMTC]
     labels_17 = ["NB-IoT", "NR mMTC"]
     fig, ax = plt.subplots()
     for i, (prof, label) in enumerate(zip(profiles, labels_17)):
-        rates = PowerModel.get_profile(prof)
+        baseline = NB_IOT_BASELINE if prof == PowerProfile.NB_IOT else NR_MMTC_BASELINE
         xs, ys = [], []
-        for ts in ts_scatter:
-            cfg = SimulationConfig(
-                n_nodes=100, arrival_rate=0.01, transmission_prob=0.01,
-                idle_timer=ts, wakeup_time=2, initial_energy=5000.0,
-                power_rates=rates, max_slots=max_slots)
+        for timer_s in ts_scatter:
+            cfg = baseline.build_config(
+                n_nodes=100,
+                arrival_rate=baseline.arrival_rate,
+                transmission_prob=q_one_over_n(100),
+                idle_timer=seconds_to_slots(timer_s),
+                wakeup_time=baseline.wakeup_time,
+                max_slots=max_slots,
+            )
             d, l, _ = mean_results(run_batch(cfg, n_reps))
             xs.append(d * SLOT_MS / 1000.0)
             ys.append(l if l != float("inf") else np.nan)
-            prog.step(f"{label} ts={ts}", f"T={d:.0f}  L={l:.2f}yr")
+            prog.step(f"{label} T3324={timer_s:g}s", f"T={d:.0f}  L={l:.2f}yr")
         ax.scatter(xs, ys, s=100, color=COLORS[i], label=label, zorder=5)
-        for x, y, ts in zip(xs, ys, ts_scatter):
-            ax.annotate(f"ts={ts}", (x, y), textcoords="offset points",
+        for x, y, timer_s in zip(xs, ys, ts_scatter):
+            ax.annotate(f"{timer_s:g}s", (x, y), textcoords="offset points",
                         xytext=(4, 2), fontsize=8)
-    ax.set_xlabel("Mean delay T̄ (s)"); ax.set_ylabel("Lifetime L̄ (years)")
-    ax.set_title("Fig 3.17 — 3GPP Scenarios: NB-IoT vs. NR mMTC")
+    ax.set_xlabel("Mean delay T (s)"); ax.set_ylabel("Expected lifetime (years)")
+    ax.set_title("Fig 3.17 - 3GPP Scenarios: NB-IoT vs. NR mMTC")
     ax.legend(); savefig("fig3_17_3gpp_scatter", fig)
     prog.finish()
 
@@ -867,25 +940,26 @@ def sec_o4(quick: bool):
 # ============================================================================
 def sec_o5(quick: bool):
     # quick: n=50, 3 reps, 8k slots → 80 cells × ~2s ≈ 3 min
-    n_reps    = 3 if quick else 15
-    max_slots = 8_000 if quick else 80_000
-    n, lam, tw = 50 if quick else 100, 0.01, 2
+    n_reps    = 2 if quick else 15
+    max_slots = 8_000 if quick else 120_000
+    n = 50 if quick else GENERIC_LITERATURE_BASELINE.n_nodes
+    lam = GENERIC_LITERATURE_BASELINE.arrival_rate
+    tw = GENERIC_LITERATURE_BASELINE.wakeup_time
 
     # 5x denser factorial grid (10q × 8ts vs old 5q × 5ts)
-    q_vals  = [0.005, 0.008, 0.01, 0.015, 0.02, 0.03, 0.05, 0.075, 0.1, 0.15] if quick else \
-              [0.005, 0.008, 0.01, 0.015, 0.02, 0.03, 0.05, 0.075, 0.1, 0.15, 0.2]
-    ts_vals = [1, 2, 5, 10, 15, 20, 30, 50] if quick else \
-              [1, 2, 3, 5, 7, 10, 15, 20, 30, 40, 50]
+    q_vals  = [0.002, 0.005, 0.01, 0.02, 0.03, 0.05] if quick else \
+              [0.002, 0.005, 0.008, 0.01, 0.015, 0.02, 0.03, 0.05, 0.075]
+    ts_vals = [seconds_to_slots(v) for v in ([0.5, 2, 10, 30] if quick else [0.5, 1, 2, 3, 5, 7, 10])]
 
     # One prog.step() per (q,ts) cell
     total_sims = len(q_vals) * len(ts_vals)
     prog = Progress(total_sims, "Figs 3.18-3.23  Independence analysis (O5)")
 
     # Wrap run_factorial_sweep to update progress per cell
-    cfg_base = base_config(n=n, lam=lam, q=q_vals[2], ts=10, tw=tw, slots=max_slots)
+    cfg_base = base_config(n=n, lam=lam, q=q_vals[2], ts=seconds_to_slots(5.0), tw=tw, slots=max_slots)
 
     # Manually run the sweep so we can call prog.step() per cell
-    analytical = IndependenceAnalyzer.compute_analytical_quantities(q_vals, ts_vals, tw, n)
+    analytical = IndependenceAnalyzer.compute_analytical_quantities(q_vals, ts_vals, tw, n, lam)
     kappa_mat  = analytical["kappa_matrix"]
     mu_mat_a   = analytical["mu_matrix"]
 
@@ -909,11 +983,11 @@ def sec_o5(quick: bool):
             rows.append({"q": q, "ts": ts, "mean_delay": m_d, "std_delay": sd_d,
                          "mean_lifetime": m_lt_v, "p_analytical": analytical["p_matrix"][i,j],
                          "mu_analytical": float(mu_mat_a[i, j]), "kappa": kappa, "stable": stable})
-            prog.step(f"q={q:.4f} ts={ts:2d}", f"T={m_d:.0f}  kappa={kappa:.3f}")
+            prog.step(f"q={q:.4f} ts={slots_to_seconds(ts):.1f}s", f"T={m_d:.0f}  kappa={kappa:.3f}")
 
     df = pd.DataFrame(rows)
     q_arr  = np.array(q_vals)
-    ts_arr = np.array(ts_vals)
+    ts_arr = np.array(timer_seconds(ts_vals))
 
     # Fig 3.18 — interaction plots (2×2)
     ts_hi = [ts_vals[0], ts_vals[len(ts_vals)//2], ts_vals[-1]]
@@ -922,54 +996,59 @@ def sec_o5(quick: bool):
     for ax, (metric, by, hi_vals, mat, ylabel) in zip(
         axes.ravel(),
         [
-            ("T̄ vs q, stratified by ts", "ts", ts_hi, delay_mat, "T̄ (slots)"),
-            ("L̄ vs q, stratified by ts", "ts", ts_hi, lt_mat,    "L̄ (years)"),
-            ("T̄ vs ts, stratified by q", "q",  q_hi,  delay_mat, "T̄ (slots)"),
-            ("L̄ vs ts, stratified by q", "q",  q_hi,  lt_mat,    "L̄ (years)"),
+            ("Delay vs q, stratified by ts", "ts", ts_hi, delay_mat, "Mean delay T (slots)"),
+            ("Lifetime vs q, stratified by ts", "ts", ts_hi, lt_mat,    "Expected lifetime (years)"),
+            ("Delay vs ts, stratified by q", "q",  q_hi,  delay_mat, "Mean delay T (slots)"),
+            ("Lifetime vs ts, stratified by q", "q",  q_hi,  lt_mat,    "Expected lifetime (years)"),
         ]
     ):
         ax.set_title(metric, fontsize=10); ax.set_ylabel(ylabel, fontsize=9)
         if by == "ts":
             for j, ts in enumerate(hi_vals):
                 idx = ts_vals.index(ts)
-                ax.plot(q_vals, mat[idx], "-", color=COLORS[j], label=f"ts={ts}", lw=1.5)
+                ax.plot(q_vals, mat[idx], "-", color=COLORS[j], label=f"ts={slots_to_seconds(ts):.1f}s", lw=1.5)
             ax.set_xlabel("q")
         else:
             for j, q in enumerate(hi_vals):
                 idx = q_vals.index(q)
-                ax.plot(ts_vals, mat[:, idx], "-", color=COLORS[j], label=f"q={q:.3f}", lw=1.5)
-            ax.set_xlabel("ts")
+                ax.plot(timer_seconds(ts_vals), mat[:, idx], "-", color=COLORS[j], label=f"q={q:.3f}", lw=1.5)
+            ax.set_xlabel("Idle timer ts (seconds)")
         ax.legend(fontsize=8); ax.grid(True, alpha=0.3)
-    fig.suptitle("Fig 3.18 — Interaction Plots: T̄ and L̄ vs. q and ts", fontsize=12)
+    fig.suptitle("Fig 3.18 - Interaction Plots: Delay and Lifetime vs. q and ts", fontsize=12)
     fig.tight_layout(); savefig("fig3_18_interaction_plots", fig)
 
     # Fig 3.19 — regression residuals
     reg = IndependenceAnalyzer.run_regression_analysis(df)
     delay_reg = reg.get("delay", {})
-    if "residuals_additive" in delay_reg:
-        fig, ax = plt.subplots()
-        kappas = df["kappa"].values
+    regression_df = reg.get("filtered_df", df.iloc[0:0])
+    fig, ax = plt.subplots()
+    if "residuals_additive" in delay_reg and len(regression_df) == len(delay_reg["residuals_additive"]):
+        kappas = regression_df["kappa"].values
         resid  = np.array(delay_reg["residuals_additive"])
-        sc = ax.scatter(kappas, resid, c=df["ts"].values, cmap="viridis",
+        sc = ax.scatter(kappas, resid, c=regression_df["ts"].apply(slots_to_seconds).values, cmap="viridis",
                         s=40, alpha=0.7)
-        plt.colorbar(sc, ax=ax, label="ts")
+        plt.colorbar(sc, ax=ax, label="ts (seconds)")
         ax.axhline(0, color="black", lw=1)
-        ax.set_xlabel("κ = p·ts"); ax.set_ylabel("Log residual (additive T̄ model)")
-        ax.set_title("Fig 3.19 — Additive Regression Residuals vs. κ")
-        savefig("fig3_19_residuals", fig)
+        ax.set_xlabel("kappa = p * ts")
+        ax.set_ylabel("Log residual (additive delay model)")
     else:
-        print("  [skip] Regression residuals not available")
+        ax.text(0.5, 0.5, reg.get("error", "Regression residuals unavailable for this run."),
+                transform=ax.transAxes, ha="center", va="center")
+        ax.set_xlabel("kappa = p * ts")
+        ax.set_ylabel("Residual")
+    ax.set_title("Fig 3.19 - Regression Residuals vs. kappa")
+    savefig("fig3_19_residuals", fig)
 
     # Fig 3.20 — κ heatmap
     fig, ax = plt.subplots(figsize=(7.5, 5))
     im = ax.pcolormesh(q_arr, ts_arr, kappa_mat, cmap="YlOrRd", shading="auto")
-    plt.colorbar(im, ax=ax, label="κ = p·ts")
-    for level, style, lbl in [(0.1, "--", "κ=0.1"), (1.0, "-", "κ=1.0")]:
+    plt.colorbar(im, ax=ax, label="kappa = p * ts")
+    for level, style, lbl in [(0.1, "--", "kappa=0.1"), (1.0, "-", "kappa=1.0")]:
         CS = ax.contour(q_arr, ts_arr, kappa_mat, levels=[level],
                         colors="navy", linestyles=style, linewidths=1.8)
         ax.clabel(CS, fmt=lbl, fontsize=9, colors="navy")
-    ax.set_xlabel("q"); ax.set_ylabel("ts")
-    ax.set_title("Fig 3.20 — Coupling Heatmap: κ = p·ts in (q, ts) Plane")
+    ax.set_xlabel("q"); ax.set_ylabel("Idle timer ts (seconds)")
+    ax.set_title("Fig 3.20 - Coupling Heatmap: kappa = p * ts")
     savefig("fig3_20_kappa_heatmap", fig)
 
     # Fig 3.21 — regime map
@@ -979,12 +1058,12 @@ def sec_o5(quick: bool):
     cmap_r = mcolors.ListedColormap(["#A8E6CF", "#FFD700", "#FF6B6B"])
     fig, ax = plt.subplots(figsize=(7.5, 5))
     ax.pcolormesh(q_arr, ts_arr, regime, cmap=cmap_r, shading="auto", vmin=0, vmax=2)
-    patches = [mpatches.Patch(color="#A8E6CF", label="Near-independent (κ < 0.1)"),
-               mpatches.Patch(color="#FFD700", label="Moderate (0.1 ≤ κ < 1)"),
-               mpatches.Patch(color="#FF6B6B", label="Strongly coupled (κ ≥ 1)")]
+    patches = [mpatches.Patch(color="#A8E6CF", label="Near-independent (kappa < 0.1)"),
+               mpatches.Patch(color="#FFD700", label="Moderate (0.1 <= kappa < 1)"),
+               mpatches.Patch(color="#FF6B6B", label="Strongly coupled (kappa >= 1)")]
     ax.legend(handles=patches, loc="upper left", fontsize=9)
-    ax.set_xlabel("q"); ax.set_ylabel("ts")
-    ax.set_title("Fig 3.21 — Coupling Regime Map in (q, ts) Plane")
+    ax.set_xlabel("q"); ax.set_ylabel("Idle timer ts (seconds)")
+    ax.set_title("Fig 3.21 - Coupling Regime Map in the (q, ts) Plane")
     savefig("fig3_21_regime_map", fig)
 
     # Fig 3.22 — q*(ts) shift
@@ -999,24 +1078,25 @@ def sec_o5(quick: bool):
         q_star_5.append(q_vals[int(np.argmin(np.where(mask5, row_d, np.inf)))]
                         if mask5.any() else np.nan)
     fig, ax = plt.subplots()
-    ax.plot(ts_vals, q_star_u, "o-",  color=COLORS[0], label="Unconstrained")
-    ax.plot(ts_vals, q_star_3, "s--", color=COLORS[1], label="L̄ ≥ 3 yr")
-    ax.plot(ts_vals, q_star_5, "^:",  color=COLORS[2], label="L̄ ≥ 5 yr")
-    ax.set_xlabel("Idle timer ts"); ax.set_ylabel("q* (delay-minimising)")
-    ax.set_title("Fig 3.22 — q*(ts) Shift Under Lifetime Constraints")
+    ts_vals_s = timer_seconds(ts_vals)
+    ax.plot(ts_vals_s, q_star_u, "o-",  color=COLORS[0], label="Unconstrained")
+    ax.plot(ts_vals_s, q_star_3, "s--", color=COLORS[1], label="L >= 3 yr")
+    ax.plot(ts_vals_s, q_star_5, "^:",  color=COLORS[2], label="L >= 5 yr")
+    ax.set_xlabel("Idle timer ts (seconds)"); ax.set_ylabel("q* (delay-minimising)")
+    ax.set_title("Fig 3.22 - q*(ts) Shift Under Lifetime Constraints")
     ax.legend(); savefig("fig3_22_qstar_shift", fig)
 
     # Fig 3.23 — iso-contour
     fig, ax = plt.subplots(figsize=(7.5, 5))
     lt_cl = np.where(np.isnan(lt_mat), 0, lt_mat)
     cf = ax.contourf(q_arr, ts_arr, lt_cl, levels=10, cmap="plasma")
-    plt.colorbar(cf, ax=ax, label="L̄ (years)")
+    plt.colorbar(cf, ax=ax, label="Expected lifetime (years)")
     d_cl = np.where(np.isnan(delay_mat), np.nanmax(delay_mat), delay_mat)
     CS = ax.contour(q_arr, ts_arr, d_cl, levels=8, colors="white",
                     linestyles="--", linewidths=1.5, alpha=0.8)
-    ax.clabel(CS, fmt="T̄=%.0f", fontsize=8)
-    ax.set_xlabel("q"); ax.set_ylabel("ts")
-    ax.set_title("Fig 3.23 — L̄ Contourf with T̄ Iso-lines")
+    ax.clabel(CS, fmt="T=%.0f", fontsize=8)
+    ax.set_xlabel("q"); ax.set_ylabel("Idle timer ts (seconds)")
+    ax.set_title("Fig 3.23 - Lifetime Contours with Delay Iso-lines")
     savefig("fig3_23_isocontour", fig)
     prog.finish()
 
@@ -1053,14 +1133,14 @@ def sec_o6(quick: bool):
     # Fig 3.24 — T̄ and drop_rate vs K
     fig, ax1 = plt.subplots()
     ax2 = ax1.twinx()
-    ax1.plot(xs, res["mean_delays"], "o-", color=COLORS[0], label="T̄ (slots)", lw=1.8)
+    ax1.plot(xs, res["mean_delays"], "o-", color=COLORS[0], label="Delay T (slots)", lw=1.8)
     ax2.plot(xs, res["drop_rates"],  "s--", color=COLORS[1], label="Drop rate", lw=1.8)
     ax1.set_xticks(xs); ax1.set_xticklabels(K_labels)
     ax1.set_xlabel("Retry limit K")
-    ax1.set_ylabel("Mean delay T̄ (slots)", color=COLORS[0])
+    ax1.set_ylabel("Mean delay T (slots)", color=COLORS[0])
     ax2.set_ylabel("Packet drop rate",      color=COLORS[1])
-    ax1.set_title("Fig 3.24 — T̄ and Drop Rate vs. Retry Limit K")
-    lines = [mpatches.Patch(color=COLORS[0], label="T̄"),
+    ax1.set_title("Fig 3.24 - Delay and Drop Rate vs. Retry Limit K")
+    lines = [mpatches.Patch(color=COLORS[0], label="Delay"),
              mpatches.Patch(color=COLORS[1], label="Drop rate")]
     ax1.legend(handles=lines, loc="upper right")
     savefig("fig3_24_retries_delay_drop", fig)
@@ -1073,8 +1153,8 @@ def sec_o6(quick: bool):
     for k_lbl, dr, d in zip(K_labels, res["drop_rates"], res["mean_delays"]):
         ax.annotate(f"K={k_lbl}", (dr, d), textcoords="offset points",
                     xytext=(4, 2), fontsize=9)
-    ax.set_xlabel("Packet drop rate"); ax.set_ylabel("Mean delay T̄ (slots)")
-    ax.set_title("Fig 3.25 — Pareto Scatter: T̄ vs. Drop Rate (varying K)")
+    ax.set_xlabel("Packet drop rate"); ax.set_ylabel("Mean delay T (slots)")
+    ax.set_title("Fig 3.25 - Pareto Scatter: Delay vs. Drop Rate (varying K)")
     savefig("fig3_25_retries_pareto", fig)
     prog.finish()
 
@@ -1085,14 +1165,16 @@ def sec_o6(quick: bool):
 def sec_o7(quick: bool):
     # quick: 3 reps, 8k slots → 14 + 50 = 64 steps × ~3s ≈ 3 min
     n_reps    = 3 if quick else 15
-    max_slots = 8_000 if quick else 80_000
-    lam, ts, tw = 0.01, 10, 2
+    max_slots = 20_000 if quick else 120_000
+    lam = GENERIC_LITERATURE_BASELINE.arrival_rate
+    ts = GENERIC_LITERATURE_BASELINE.idle_timer_slots
+    tw = GENERIC_LITERATURE_BASELINE.wakeup_time
 
     # 5x more n values
     n_vals    = [10, 15, 20, 30, 50, 75, 100] if quick else \
                 [10, 15, 20, 30, 50, 75, 100, 150, 200]
     # 5x more lambda points
-    lam_sweep = list(np.linspace(0.001, 0.04, 25 if quick else 50))
+    lam_sweep = list(np.geomspace(1e-6, 5e-4, 25 if quick else 50))
 
     # One prog.step() per (n × 2 schemes) + per (lam × 2 schemes)
     total_sims = len(n_vals) * 2 + len(lam_sweep) * 2
@@ -1106,11 +1188,11 @@ def sec_o7(quick: bool):
         return float(np.mean(rates)) if rates else 0.0
 
     for nn in n_vals:
-        q = 1.0 / nn
+        q = q_one_over_n(nn)
         pwr = PowerModel.get_profile(PowerProfile.GENERIC_LOW)
         cfg_a = base_config(n=nn, lam=lam, q=q, ts=ts, tw=tw, slots=max_slots)
         cfg_c = SimulationConfig(n_nodes=nn, arrival_rate=lam, transmission_prob=q,
-                                 idle_timer=ts, wakeup_time=tw, initial_energy=5000.0,
+                                 idle_timer=ts, wakeup_time=tw, initial_energy=GENERIC_INITIAL_ENERGY_MWH,
                                  power_rates=pwr, max_slots=max_slots,
                                  access_scheme="csma_1p")
         reps_a = run_batch(cfg_a, n_reps)
@@ -1134,8 +1216,8 @@ def sec_o7(quick: bool):
             n_star = n_vals[i] + (n_vals[i+1] - n_vals[i]) * f
             ax.axvline(n_star, color="gray", lw=1, ls=":", label=f"n*≈{n_star:.0f}")
             break
-    ax.set_xlabel("Number of nodes n"); ax.set_ylabel("Mean delay T̄ (slots)")
-    ax.set_title("Fig 3.26 — T̄ vs. n: CSMA vs. Slotted Aloha")
+    ax.set_xlabel("Number of nodes n"); ax.set_ylabel("Mean delay T (slots)")
+    ax.set_title("Fig 3.26 - Delay vs. n: CSMA vs. Slotted Aloha")
     ax.legend(); savefig("fig3_26_csma_delay_vs_n", fig)
 
     # Fig 3.27 — collision rate vs n
@@ -1143,7 +1225,7 @@ def sec_o7(quick: bool):
     ax.plot(n_vals, aloha_coll, "o-",  color=COLORS[0], label="Slotted Aloha", lw=1.8)
     ax.plot(n_vals, csma_coll,  "s--", color=COLORS[1], label="CSMA-1P",       lw=1.8)
     ax.set_xlabel("Number of nodes n"); ax.set_ylabel("Collision rate")
-    ax.set_title("Fig 3.27 — Collision Rate vs. n: CSMA vs. Aloha")
+    ax.set_title("Fig 3.27 - Collision Rate vs. n: CSMA vs. Aloha")
     ax.legend(); savefig("fig3_27_csma_collision_vs_n", fig)
 
     # Fig 3.28 — throughput vs λ
@@ -1151,10 +1233,10 @@ def sec_o7(quick: bool):
     pwr = PowerModel.get_profile(PowerProfile.GENERIC_LOW)
     aloha_tput, csma_tput = [], []
     for lm in lam_sweep:
-        q = 1.0 / nn
+        q = q_one_over_n(nn)
         cfg_a = base_config(n=nn, lam=lm, q=q, ts=ts, tw=tw, slots=max_slots)
         cfg_c = SimulationConfig(n_nodes=nn, arrival_rate=lm, transmission_prob=q,
-                                 idle_timer=ts, wakeup_time=tw, initial_energy=5000.0,
+                                 idle_timer=ts, wakeup_time=tw, initial_energy=GENERIC_INITIAL_ENERGY_MWH,
                                  power_rates=pwr, max_slots=max_slots,
                                  access_scheme="csma_1p")
         ra = run_batch(cfg_a, n_reps)
@@ -1170,8 +1252,8 @@ def sec_o7(quick: bool):
     fig, ax = plt.subplots()
     ax.plot(lam_sweep, aloha_tput, "o-",  color=COLORS[0], label="Slotted Aloha", lw=1.8)
     ax.plot(lam_sweep, csma_tput,  "s--", color=COLORS[1], label="CSMA-1P",       lw=1.8)
-    ax.set_xlabel("Arrival rate λ"); ax.set_ylabel("Throughput (pkts/slot)")
-    ax.set_title("Fig 3.28 — Throughput vs. λ: CSMA vs. Aloha (n=100)")
+    ax.set_xlabel("Arrival rate lambda"); ax.set_ylabel("Throughput (pkts/slot)")
+    ax.set_title("Fig 3.28 - Throughput vs. lambda: CSMA vs. Aloha (n=100)")
     ax.legend(); savefig("fig3_28_csma_throughput_vs_lambda", fig)
     prog.finish()
 
@@ -1182,8 +1264,10 @@ def sec_o7(quick: bool):
 def sec_o8(quick: bool):
     # quick: 3 reps, 8k slots → 21 steps × ~3s ≈ 1 min
     n_reps    = 3 if quick else 15
-    max_slots = 8_000 if quick else 80_000
-    lam, ts, tw = 0.01, 10, 2
+    max_slots = 20_000 if quick else 120_000
+    lam = GENERIC_LITERATURE_BASELINE.arrival_rate
+    ts = GENERIC_LITERATURE_BASELINE.idle_timer_slots
+    tw = GENERIC_LITERATURE_BASELINE.wakeup_time
 
     # 5x more n values
     n_vals  = [10, 15, 20, 30, 50, 75, 100] if quick else \
@@ -1191,7 +1275,7 @@ def sec_o8(quick: bool):
     models  = [("collision", 10.0, 1.0),
                ("capture",   10.0, 1.0),
                ("sic",       10.0, 1.0)]
-    mlabels = ["COLLISION", "CAPTURE (γ=10)", "SIC"]
+    mlabels = ["COLLISION", "CAPTURE (gamma=10)", "SIC"]
 
     # One prog.step() per (n, model) combination
     total_sims = len(n_vals) * len(models)
@@ -1204,13 +1288,13 @@ def sec_o8(quick: bool):
         q = 1.0 / nn
         for (mstr, cap, sic_thr), mlabel in zip(models, mlabels):
             cfg = SimulationConfig(n_nodes=nn, arrival_rate=lam, transmission_prob=q,
-                                   idle_timer=ts, wakeup_time=tw, initial_energy=5000.0,
+                                  idle_timer=ts, wakeup_time=tw, initial_energy=GENERIC_INITIAL_ENERGY_MWH,
                                    power_rates=pwr, max_slots=max_slots,
                                    receiver_model=mstr,
                                    capture_threshold=cap,
                                    sic_sinr_threshold=sic_thr)
             reps = [Simulator(cfg).run_simulation() for _ in range(n_reps)]
-            ep   = float(np.mean([r.empirical_success_prob for r in reps]))
+            ep   = float(np.mean([r.empirical_service_rate for r in reps]))
             d, l, _ = mean_results(reps)
             ps, ds, ls = results[mstr]
             ps.append(ep); ds.append(d)
@@ -1221,24 +1305,24 @@ def sec_o8(quick: bool):
     fig, ax = plt.subplots()
     for i, (mstr, mlabel) in enumerate(zip([m[0] for m in models], mlabels)):
         ax.plot(n_vals, results[mstr][0], "o-", color=COLORS[i], label=mlabel, lw=1.8)
-    ax.set_xlabel("Number of nodes n"); ax.set_ylabel("Effective success prob. p")
-    ax.set_title("Fig 3.29 — Effective p vs. n for Three Receiver Models")
+    ax.set_xlabel("Number of nodes n"); ax.set_ylabel("Per-node success rate p")
+    ax.set_title("Fig 3.29 - Effective Success Probability vs. n for Three Receiver Models")
     ax.legend(); savefig("fig3_29_receiver_p_vs_n", fig)
 
     # Fig 3.30 — T̄ vs n
     fig, ax = plt.subplots()
     for i, (mstr, mlabel) in enumerate(zip([m[0] for m in models], mlabels)):
         ax.plot(n_vals, results[mstr][1], "o-", color=COLORS[i], label=mlabel, lw=1.8)
-    ax.set_xlabel("Number of nodes n"); ax.set_ylabel("Mean delay T̄ (slots)")
-    ax.set_title("Fig 3.30 — T̄ vs. n for Three Receiver Models")
+    ax.set_xlabel("Number of nodes n"); ax.set_ylabel("Mean delay T (slots)")
+    ax.set_title("Fig 3.30 - Delay vs. n for Three Receiver Models")
     ax.legend(); savefig("fig3_30_receiver_delay_vs_n", fig)
 
     # Fig 3.31 — L̄ vs n
     fig, ax = plt.subplots()
     for i, (mstr, mlabel) in enumerate(zip([m[0] for m in models], mlabels)):
         ax.plot(n_vals, results[mstr][2], "o-", color=COLORS[i], label=mlabel, lw=1.8)
-    ax.set_xlabel("Number of nodes n"); ax.set_ylabel("Expected lifetime L̄ (years)")
-    ax.set_title("Fig 3.31 — L̄ vs. n for Three Receiver Models")
+    ax.set_xlabel("Number of nodes n"); ax.set_ylabel("Expected lifetime (years)")
+    ax.set_title("Fig 3.31 - Lifetime vs. n for Three Receiver Models")
     ax.legend(); savefig("fig3_31_receiver_lifetime_vs_n", fig)
     prog.finish()
 
@@ -1249,10 +1333,10 @@ def sec_o8(quick: bool):
 def sec_o9(quick: bool):
     # 5x more q points and ts levels
     # quick: 3 reps, 8k slots → 25×6 = 150 steps × ~1.5s ≈ 4 min
-    q_values  = list(np.linspace(0.005, 0.15, 25 if quick else 50))
-    ts_values = [1, 3, 5, 10, 20, 30] if quick else [1, 2, 3, 5, 7, 10, 15, 20, 30, 50]
+    q_values  = list(np.linspace(0.002, 0.05, 25 if quick else 50))
+    ts_values = [seconds_to_slots(v) for v in ([0.5, 1, 2, 5, 10] if quick else [0.5, 1, 2, 3, 5, 7, 10])]
     n_reps    = 3 if quick else 15
-    max_slots = 8_000 if quick else 80_000
+    max_slots = 20_000 if quick else 120_000
 
     total_sims = len(q_values) * len(ts_values) * n_reps
     prog = Progress(total_sims, "Figs 3.32-3.34  Age of Information (O9)")
@@ -1278,19 +1362,20 @@ def sec_o9(quick: bool):
     for i, ts in enumerate(ts_vals):
         row  = grid[ts]
         aois = [r["mean_aoi"] for r in row]
-        ax.plot(q_vals, aois, "-", color=COLORS[i % 10], label=f"ts={ts}", lw=1.6)
+        ax.plot(q_vals, aois, "-", color=COLORS[i % 10], label=f"ts={slots_to_seconds(ts):.1f}s", lw=1.6)
         aoi_star_per_ts.append(q_vals[int(np.argmin(aois))])
         d_star_per_ts.append(q_vals[int(np.argmin([r["mean_delay"] for r in row]))])
     ax.set_xlabel("Transmission probability q"); ax.set_ylabel("Mean AoI (slots)")
-    ax.set_title("Fig 3.32 — Mean AoI vs. q for Multiple ts Values")
+    ax.set_title("Fig 3.32 - Mean AoI vs. q for Multiple ts Values")
     ax.legend(title="ts", ncol=2, fontsize=9); savefig("fig3_32_aoi_vs_q", fig)
 
     # Fig 3.33 — AoI-optimal vs delay-optimal q*
     fig, ax = plt.subplots()
-    ax.plot(ts_vals, aoi_star_per_ts, "o-",  color=COLORS[0], label="AoI-optimal q*", lw=1.8)
-    ax.plot(ts_vals, d_star_per_ts,   "s--", color=COLORS[1], label="Delay-optimal q*", lw=1.8)
-    ax.set_xlabel("Idle timer ts"); ax.set_ylabel("q*")
-    ax.set_title("Fig 3.33 — AoI-Optimal vs. Delay-Optimal q*(ts)")
+    ts_vals_s = timer_seconds(ts_vals)
+    ax.plot(ts_vals_s, aoi_star_per_ts, "o-",  color=COLORS[0], label="AoI-optimal q*", lw=1.8)
+    ax.plot(ts_vals_s, d_star_per_ts,   "s--", color=COLORS[1], label="Delay-optimal q*", lw=1.8)
+    ax.set_xlabel("Idle timer ts (seconds)"); ax.set_ylabel("q*")
+    ax.set_title("Fig 3.33 - AoI-Optimal vs. Delay-Optimal q*(ts)")
     ax.legend(); savefig("fig3_33_aoi_vs_delay_qstar", fig)
 
     # Fig 3.34 — AoI-Lifetime Pareto
@@ -1302,9 +1387,9 @@ def sec_o9(quick: bool):
             d_all.append(r["mean_delay"])
     fig, ax = plt.subplots()
     sc = ax.scatter(aoi_all, lt_all, c=d_all, cmap="viridis", s=50, zorder=5, alpha=0.85)
-    plt.colorbar(sc, ax=ax, label="Mean delay T̄ (slots)")
-    ax.set_xlabel("Mean AoI (slots)"); ax.set_ylabel("Expected lifetime L̄ (years)")
-    ax.set_title("Fig 3.34 — AoI–Lifetime Tradeoff (delay color-coded)")
+    plt.colorbar(sc, ax=ax, label="Mean delay T (slots)")
+    ax.set_xlabel("Mean AoI (slots)"); ax.set_ylabel("Expected lifetime (years)")
+    ax.set_title("Fig 3.34 - AoI-Lifetime Tradeoff (delay color-coded)")
     savefig("fig3_34_aoi_lt_pareto", fig)
     prog.finish()
 
@@ -1354,8 +1439,8 @@ def sec_o10(quick: bool):
     custom += [mpatches.Patch(color=COLORS[i % 10], label=f"BI={v:.2g}")
                for i, v in enumerate(bi)]
     ax.legend(handles=custom, fontsize=8, ncol=2)
-    ax.set_xlabel("Empirical μ"); ax.set_ylabel("Analytical μ")
-    ax.set_title("Fig 3.35 — Analytical vs. Empirical μ for Varying BI")
+    ax.set_xlabel("Empirical mu"); ax.set_ylabel("Analytical mu")
+    ax.set_title("Fig 3.35 - Analytical vs. Empirical mu for Varying BI")
     savefig("fig3_35_mmbp_mu_scatter", fig)
 
     # Fig 3.36 — prediction error vs BI
@@ -1369,8 +1454,8 @@ def sec_o10(quick: bool):
             bi_star = bi[i] + (bi[i+1] - bi[i]) * f
             ax.axvline(bi_star, color="gray", lw=1, ls="--", label=f"BI*≈{bi_star:.1f}")
             break
-    ax.set_xlabel("Burstiness Index BI"); ax.set_ylabel("μ prediction error (%)")
-    ax.set_title("Fig 3.36 — μ Prediction Error vs. BI: MMBP vs. Bernoulli")
+    ax.set_xlabel("Burstiness Index BI"); ax.set_ylabel("mu prediction error (%)")
+    ax.set_title("Fig 3.36 - mu Prediction Error vs. BI: MMBP vs. Bernoulli")
     ax.legend(); savefig("fig3_36_mmbp_error_vs_bi", fig)
     prog.finish()
 

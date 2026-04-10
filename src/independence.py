@@ -3,8 +3,8 @@ Independence Analysis Module for q and t_s Parameters (Objective O5)
 
 Determines whether the transmission probability q and idle timer t_s are
 independent parameters with respect to system performance (mean delay T,
-lifetime L).  The analytical answer is NO — the service rate formula
-mu = p / (1 + p*ts + p*tw) contains the cross-term p*ts that couples them.
+lifetime L). The validation baseline for μ lives in `src.metrics`, while this
+module uses κ = p*ts as a compact coupling score for the q/ts design space.
 
 This module provides:
 - Full factorial sweep over (q, ts) space
@@ -26,6 +26,7 @@ from .simulator import Simulator, SimulationConfig, SimulationResults
 from .power_model import PowerModel, PowerProfile
 from .metrics import MetricsCalculator
 from .optimization import _run_replications, _config_dict, _mean_finite, _std_finite
+from .baselines import GENERIC_LITERATURE_BASELINE
 
 
 # ---------------------------------------------------------------------------
@@ -36,9 +37,9 @@ class IndependenceAnalyzer:
     """
     Static methods to probe whether q and t_s are independent parameters.
 
-    The key insight is that the service rate mu = p / (1 + p*ts + p*tw),
-    where p = q*(1-q)^(n-1), contains the product p*ts.  Because p depends
-    on q, the marginal effect of q on mu changes with ts and vice versa.
+    The key heuristic is κ = p*ts, where p = q*(1-q)^(n-1). Because p depends
+    on q, κ varies with both q and ts and provides a compact summary of the
+    interaction region.
     """
 
     @staticmethod
@@ -47,6 +48,7 @@ class IndependenceAnalyzer:
         ts_values: List[int],
         tw: int,
         n: int,
+        lambda_rate: float = GENERIC_LITERATURE_BASELINE.arrival_rate,
     ) -> Dict[str, Any]:
         """
         Compute p, mu, kappa analytically for every (q, ts) combination.
@@ -65,8 +67,9 @@ class IndependenceAnalyzer:
         for j, q in enumerate(q_values):
             p = q * (1 - q) ** (n - 1)
             for i, ts in enumerate(ts_values):
-                denom = 1 + p * ts + p * tw
-                mu = p / denom if denom > 0 else 0.0
+                mu = MetricsCalculator.compute_analytical_service_rate(
+                    p, lambda_rate, tw, has_sleep=True
+                )
                 kappa = p * ts
 
                 p_matrix[i, j] = p
@@ -83,6 +86,7 @@ class IndependenceAnalyzer:
             "ts_values": list(ts_values),
             "tw": tw,
             "n": n,
+            "lambda_rate": lambda_rate,
             "p_matrix": p_matrix,
             "mu_matrix": mu_matrix,
             "kappa_matrix": kappa_matrix,
@@ -124,7 +128,7 @@ class IndependenceAnalyzer:
 
         # Analytical quantities
         analytical = IndependenceAnalyzer.compute_analytical_quantities(
-            q_values, ts_values, tw, n
+            q_values, ts_values, tw, n, lam
         )
 
         lifetime_matrix = np.zeros((n_ts, n_q))
@@ -211,7 +215,10 @@ class IndependenceAnalyzer:
         sdf = df[mask].copy()
 
         if len(sdf) < 5:
-            return {"error": "Not enough stable data points for regression."}
+            return {
+                "error": "Not enough stable data points for regression.",
+                "filtered_df": sdf,
+            }
 
         log_q = np.log(sdf["q"].values)
         log_ts = np.log(sdf["ts"].values.astype(float))
@@ -273,6 +280,7 @@ class IndependenceAnalyzer:
                 "log_ts": log_ts,
             }
 
+        results["filtered_df"] = sdf
         return results
 
     @staticmethod
@@ -1000,8 +1008,8 @@ class IndependenceVisualizer:
         fig, axes = plt.subplots(1, 2, figsize=(16, 6), sharey=False)
 
         for col_idx, (metric_key_q, metric_key_ts, ylabel, metric_label) in enumerate([
-            ("dT_dq", "dT_dts", "% Change in Delay", "Delay ¯T"),
-            ("dL_dq", "dL_dts", "% Change in Lifetime", "Lifetime ¯L"),
+            ("dT_dq", "dT_dts", "% Change in Delay", "Mean delay"),
+            ("dL_dq", "dL_dts", "% Change in Lifetime", "Mean lifetime"),
         ]):
             ax = axes[col_idx]
             q_vals_bar = [r[metric_key_q] for r in selected]
@@ -1089,7 +1097,11 @@ def run_o5_experiments(
     print("STEP 1: ANALYTICAL DECOMPOSITION")
     print("=" * 80)
     analytical = IndependenceAnalyzer.compute_analytical_quantities(
-        q_vals, ts_vals, tw=base_config.wakeup_time, n=n_nodes,
+        q_vals,
+        ts_vals,
+        tw=base_config.wakeup_time,
+        n=n_nodes,
+        lambda_rate=base_config.arrival_rate,
     )
     results["analytical"] = analytical
 

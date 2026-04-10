@@ -19,7 +19,7 @@ In IoT networks, every time a sensor wakes up to send a packet, it costs battery
 
 `[Gesture to the left panel.]`
 
-The challenge is clear. Billions of battery-powered Machine-Type Devices must operate for 5–10 years without maintenance. To achieve this lifetime they must sleep aggressively. Yet sleeping creates access delay since packets arriving during sleep will be buffered and delivered late. This tension is especially critical in mission-critical M2M applications where latency must be orders of magnitude lower than typical human-to-human traffic.
+The challenge is clear. Many battery-powered Machine-Type Device deployments target multi-year operation, often on the order of 5 to 10 years without maintenance. To approach that kind of lifetime they must sleep aggressively. Yet sleeping creates access delay since packets arriving during sleep will be buffered and delivered late. This tension is especially critical in mission-critical M2M applications where latency must be orders of magnitude lower than typical human-to-human traffic.
 
 `[next page]`
 
@@ -169,7 +169,7 @@ Future extensions — heterogeneous nodes, capture effect, and multi-channel acc
 
 The bottom line is this:
 
-**With a T3324 timer of 10 slots and q = 1/n, IoT devices can achieve sub-second access delay while lasting over two years on a single AA battery — and now we have a validated simulator to prove it.**
+**With a tuned T3324 timer and q = 1/n, the simulator makes the delay-lifetime trade-off explicit under the chosen power and battery assumptions, while still delivering sub-second access delay in the responsive operating region.**
 
 Thank you. I am happy to take any questions.
 

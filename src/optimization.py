@@ -21,6 +21,7 @@ from dataclasses import dataclass, field
 from .simulator import Simulator, BatchSimulator, SimulationConfig, SimulationResults
 from .power_model import PowerModel, PowerProfile
 from .metrics import MetricsCalculator, analyze_batch_results
+from .baselines import GENERIC_LITERATURE_BASELINE, q_one_over_n, seconds_to_slots
 
 
 # ---------------------------------------------------------------------------
@@ -1085,11 +1086,11 @@ def run_optimization_experiments(
 
     base_config = SimulationConfig(
         n_nodes=20,
-        arrival_rate=0.01,
-        transmission_prob=0.05,
-        idle_timer=10,
-        wakeup_time=5,
-        initial_energy=5000,
+        arrival_rate=GENERIC_LITERATURE_BASELINE.arrival_rate,
+        transmission_prob=q_one_over_n(20),
+        idle_timer=seconds_to_slots(5.0),
+        wakeup_time=GENERIC_LITERATURE_BASELINE.wakeup_time,
+        initial_energy=GENERIC_LITERATURE_BASELINE.initial_energy_mwh,
         power_rates=PowerModel.get_profile(PowerProfile.GENERIC_LOW),
         max_slots=max_slots,
         seed=None,
@@ -1139,7 +1140,7 @@ def run_optimization_experiments(
     print("TASK 3.2a: PRIORITIZATION SCENARIO COMPARISON")
     print("=" * 80)
     comparison = PrioritizationAnalyzer.run_scenario_comparison(
-        n_nodes=20, arrival_rate=0.01,
+        n_nodes=20, arrival_rate=GENERIC_LITERATURE_BASELINE.arrival_rate,
         max_slots=max_slots,
         n_replications=n_reps * 2,
         verbose=True,

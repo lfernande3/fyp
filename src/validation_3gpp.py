@@ -36,13 +36,21 @@ from .simulator import Simulator, SimulationConfig, SimulationResults
 from .power_model import PowerModel, PowerProfile, BatteryConfig
 from .metrics import MetricsCalculator
 from .optimization import DutyCycleSimulator, _run_replications, _mean_finite, _std_finite, _config_dict
+from .baselines import (
+    SLOT_DURATION_MS,
+    GENERIC_LITERATURE_BASELINE,
+    NB_IOT_BASELINE,
+    NR_MMTC_BASELINE,
+    battery_energy_mwh,
+    q_one_over_n,
+    seconds_to_slots,
+)
 
 
 # ---------------------------------------------------------------------------
 # Constants
 # ---------------------------------------------------------------------------
 
-SLOT_DURATION_MS = 6.0          # Default slot length in the simulator (ms)
 SECONDS_PER_YEAR = 365.25 * 24 * 3600
 
 
@@ -130,10 +138,10 @@ class ThreeGPPAlignment:
     @staticmethod
     def create_mico_nb_iot_scenario(
         n_nodes: int = 20,
-        arrival_rate: float = 0.01,
+        arrival_rate: float = NB_IOT_BASELINE.arrival_rate,
         t3324_s: float = 10.0,
         ra_sdt_steps: int = 2,
-        initial_energy: float = 5000.0,
+        initial_energy: float = NB_IOT_BASELINE.initial_energy_mwh,
         max_slots: int = 50_000,
     ) -> ThreeGPPScenario:
         """
@@ -155,7 +163,7 @@ class ThreeGPPAlignment:
         """
         tw = ThreeGPPAlignment.RA_SDT_2STEP_TW if ra_sdt_steps == 2 else ThreeGPPAlignment.RA_SDT_4STEP_TW
         ts = ThreeGPPAlignment.t3324_to_ts(t3324_s)
-        q = 1.0 / n_nodes   # Aloha-optimal
+        q = q_one_over_n(n_nodes)
 
         config = SimulationConfig(
             n_nodes=n_nodes,
@@ -186,10 +194,10 @@ class ThreeGPPAlignment:
     @staticmethod
     def create_mico_nr_mmtc_scenario(
         n_nodes: int = 20,
-        arrival_rate: float = 0.01,
+        arrival_rate: float = NR_MMTC_BASELINE.arrival_rate,
         t3324_s: float = 10.0,
         ra_sdt_steps: int = 2,
-        initial_energy: float = 5000.0,
+        initial_energy: float = NR_MMTC_BASELINE.initial_energy_mwh,
         max_slots: int = 50_000,
     ) -> ThreeGPPScenario:
         """
@@ -201,7 +209,7 @@ class ThreeGPPAlignment:
         """
         tw = ThreeGPPAlignment.RA_SDT_2STEP_TW if ra_sdt_steps == 2 else ThreeGPPAlignment.RA_SDT_4STEP_TW
         ts = ThreeGPPAlignment.t3324_to_ts(t3324_s)
-        q = 1.0 / n_nodes
+        q = q_one_over_n(n_nodes)
 
         config = SimulationConfig(
             n_nodes=n_nodes,
@@ -232,8 +240,8 @@ class ThreeGPPAlignment:
     @staticmethod
     def create_standard_scenarios(
         n_nodes: int = 20,
-        arrival_rate: float = 0.01,
-        initial_energy: float = 5000.0,
+        arrival_rate: float = NB_IOT_BASELINE.arrival_rate,
+        initial_energy: float = NB_IOT_BASELINE.initial_energy_mwh,
         max_slots: int = 50_000,
     ) -> List[ThreeGPPScenario]:
         """
@@ -1223,10 +1231,10 @@ def run_o4_experiments(
     print("TASK 4.1: 3GPP SCENARIO ALIGNMENT")
     print("=" * 80)
     n_nodes = 20
-    arrival_rate = 0.01
+    arrival_rate = NB_IOT_BASELINE.arrival_rate
     scenarios = ThreeGPPAlignment.create_standard_scenarios(
         n_nodes=n_nodes, arrival_rate=arrival_rate,
-        initial_energy=5000.0, max_slots=max_slots,
+        initial_energy=NB_IOT_BASELINE.initial_energy_mwh, max_slots=max_slots,
     )
     results["scenarios"] = scenarios
 
@@ -1253,7 +1261,10 @@ def run_o4_experiments(
     print("  Validating p = q(1-q)^(n-1), μ = p/(1+tw·λ/(1-λ)), ¯T = 1/(μ-λ) …")
     val_across_n = AnalyticsValidator.validate_across_n(
         n_values=n_values,
-        q_per_n=True, lambda_rate=0.005, tw=2, ts=10,
+        q_per_n=True,
+        lambda_rate=GENERIC_LITERATURE_BASELINE.arrival_rate,
+        tw=GENERIC_LITERATURE_BASELINE.wakeup_time,
+        ts=GENERIC_LITERATURE_BASELINE.idle_timer_slots,
         max_slots=max_slots, n_replications=n_reps, verbose=True,
     )
     for n, rep in val_across_n.items():
@@ -1265,9 +1276,12 @@ def run_o4_experiments(
     print("TASK 4.2b: CONVERGENCE ANALYSIS")
     print("=" * 80)
     base_cfg = SimulationConfig(
-        n_nodes=10, arrival_rate=0.005,
-        transmission_prob=0.1, idle_timer=10, wakeup_time=2,
-        initial_energy=5000.0,
+        n_nodes=10,
+        arrival_rate=GENERIC_LITERATURE_BASELINE.arrival_rate,
+        transmission_prob=q_one_over_n(10),
+        idle_timer=GENERIC_LITERATURE_BASELINE.idle_timer_slots,
+        wakeup_time=GENERIC_LITERATURE_BASELINE.wakeup_time,
+        initial_energy=GENERIC_LITERATURE_BASELINE.initial_energy_mwh,
         power_rates=PowerModel.get_profile(PowerProfile.GENERIC_LOW),
         max_slots=50_000, seed=None,
     )
@@ -1294,11 +1308,11 @@ def run_o4_experiments(
     print("\n" + "=" * 80)
     print("TASK 4.3a: LIFETIME vs λ CURVES")
     print("=" * 80)
-    ts_for_sweep = [1, 10, 50] if quick_mode else [1, 5, 10, 20, 50]
-    lambda_vals = [0.001, 0.01, 0.05] if quick_mode else [0.001, 0.005, 0.01, 0.02, 0.05]
+    ts_for_sweep = [seconds_to_slots(v) for v in ([2.0, 10.0, 60.0] if quick_mode else [2.0, 10.0, 60.0, 360.0])]
+    lambda_vals = [1e-6, 1e-5, 1e-4] if quick_mode else [1e-6, 5e-6, 1e-5, 5e-5, 1e-4, 5e-4]
     lifetime_data = DesignGuidelines.lifetime_vs_lambda(
         ts_values=ts_for_sweep, lambda_values=lambda_vals,
-        n=n_nodes, tw=2, max_slots=max_slots,
+        n=n_nodes, tw=GENERIC_LITERATURE_BASELINE.wakeup_time, max_slots=max_slots,
         n_replications=n_reps, verbose=True,
     )
     results["lifetime_data"] = lifetime_data
@@ -1307,11 +1321,11 @@ def run_o4_experiments(
     print("\n" + "=" * 80)
     print("TASK 4.3b: DESIGN GUIDELINE TABLE")
     print("=" * 80)
-    lam_guide = [0.001, 0.01, 0.05] if quick_mode else [0.001, 0.005, 0.01, 0.02, 0.05]
-    ts_guide = [1, 10, 50] if quick_mode else [1, 5, 10, 20, 50, 100]
+    lam_guide = [1e-6, 1e-5, 1e-4] if quick_mode else [1e-6, 5e-6, 1e-5, 5e-5, 1e-4]
+    ts_guide = [seconds_to_slots(v) for v in ([2.0, 10.0, 60.0] if quick_mode else [2.0, 10.0, 60.0, 360.0])]
     guideline_entries = DesignGuidelines.generate_guideline_table(
         lambda_values=lam_guide, ts_values=ts_guide,
-        n=n_nodes, tw=2, delay_target_ms=1000.0,
+        n=n_nodes, tw=GENERIC_LITERATURE_BASELINE.wakeup_time, delay_target_ms=1000.0,
         max_slots=max_slots, n_replications=n_reps, verbose=True,
     )
     DesignGuidelines.print_guideline_table(guideline_entries, delay_target_ms=1000.0)

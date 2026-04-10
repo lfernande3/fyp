@@ -73,15 +73,13 @@ class TestComputeAnalytical:
         expected_p = q * (1 - q) ** (n - 1)
         assert abs(result["p_matrix"][0, 0] - expected_p) < 1e-10
 
-    def test_mu_decreases_with_ts(self):
+    def test_mu_is_flat_across_ts_under_validation_model(self):
         result = IndependenceAnalyzer.compute_analytical_quantities(
             [0.1], [1, 5, 10, 50], tw=2, n=10,
         )
         mu_vals = result["mu_matrix"][:, 0]
         for i in range(len(mu_vals) - 1):
-            assert mu_vals[i] > mu_vals[i + 1], (
-                f"mu should decrease as ts increases: mu[ts={i}]={mu_vals[i]}"
-            )
+            assert abs(mu_vals[i] - mu_vals[i + 1]) < 1e-12
 
     def test_kappa_is_p_times_ts(self):
         result = IndependenceAnalyzer.compute_analytical_quantities(

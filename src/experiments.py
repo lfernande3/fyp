@@ -20,6 +20,7 @@ from pathlib import Path
 from .simulator import Simulator, SimulationConfig, SimulationResults, BatchSimulator
 from .power_model import PowerModel, PowerProfile
 from .metrics import MetricsCalculator, analyze_batch_results
+from .baselines import GENERIC_LITERATURE_BASELINE, q_one_over_n, seconds_to_slots
 
 
 @dataclass
@@ -301,7 +302,7 @@ class ScenarioExperiments:
     @staticmethod
     def create_low_latency_scenario(
         n_nodes: int = 20,
-        arrival_rate: float = 0.01,
+        arrival_rate: float = GENERIC_LITERATURE_BASELINE.arrival_rate,
         power_profile: PowerProfile = PowerProfile.GENERIC_LOW
     ) -> ScenarioConfig:
         """
@@ -320,15 +321,15 @@ class ScenarioExperiments:
         Returns:
             ScenarioConfig for low-latency priority
         """
-        optimal_q = 1.0 / n_nodes
+        optimal_q = q_one_over_n(n_nodes)
         
         config = SimulationConfig(
             n_nodes=n_nodes,
             arrival_rate=arrival_rate,
             transmission_prob=optimal_q,  # Optimal for throughput
-            idle_timer=1,                 # Quick sleep entry
-            wakeup_time=2,                # Short wake-up
-            initial_energy=5000,
+            idle_timer=seconds_to_slots(0.5),
+            wakeup_time=GENERIC_LITERATURE_BASELINE.wakeup_time,
+            initial_energy=GENERIC_LITERATURE_BASELINE.initial_energy_mwh,
             power_rates=PowerModel.get_profile(power_profile),
             max_slots=50000,
             seed=None
@@ -344,7 +345,7 @@ class ScenarioExperiments:
     @staticmethod
     def create_battery_life_scenario(
         n_nodes: int = 20,
-        arrival_rate: float = 0.01,
+        arrival_rate: float = GENERIC_LITERATURE_BASELINE.arrival_rate,
         power_profile: PowerProfile = PowerProfile.GENERIC_LOW
     ) -> ScenarioConfig:
         """
@@ -366,10 +367,10 @@ class ScenarioExperiments:
         config = SimulationConfig(
             n_nodes=n_nodes,
             arrival_rate=arrival_rate,
-            transmission_prob=0.02,       # Conservative for energy
-            idle_timer=50,                # Long idle before sleep
-            wakeup_time=5,                # Wake-up time less critical
-            initial_energy=5000,
+            transmission_prob=0.5 * q_one_over_n(n_nodes),
+            idle_timer=seconds_to_slots(10.0),
+            wakeup_time=GENERIC_LITERATURE_BASELINE.wakeup_time,
+            initial_energy=GENERIC_LITERATURE_BASELINE.initial_energy_mwh,
             power_rates=PowerModel.get_profile(power_profile),
             max_slots=50000,
             seed=None
@@ -385,7 +386,7 @@ class ScenarioExperiments:
     @staticmethod
     def create_balanced_scenario(
         n_nodes: int = 20,
-        arrival_rate: float = 0.01,
+        arrival_rate: float = GENERIC_LITERATURE_BASELINE.arrival_rate,
         power_profile: PowerProfile = PowerProfile.GENERIC_LOW
     ) -> ScenarioConfig:
         """
@@ -406,10 +407,10 @@ class ScenarioExperiments:
         config = SimulationConfig(
             n_nodes=n_nodes,
             arrival_rate=arrival_rate,
-            transmission_prob=0.05,       # Balanced
-            idle_timer=10,                # Moderate
-            wakeup_time=3,                # Moderate
-            initial_energy=5000,
+            transmission_prob=q_one_over_n(n_nodes),
+            idle_timer=seconds_to_slots(5.0),
+            wakeup_time=GENERIC_LITERATURE_BASELINE.wakeup_time,
+            initial_energy=GENERIC_LITERATURE_BASELINE.initial_energy_mwh,
             power_rates=PowerModel.get_profile(power_profile),
             max_slots=50000,
             seed=None
@@ -519,13 +520,13 @@ class ScenarioExperiments:
 
 def run_o6_experiments(
     n_nodes: int = 100,
-    arrival_rate: float = 0.01,
-    ts: int = 10,
-    tw: int = 2,
+    arrival_rate: float = GENERIC_LITERATURE_BASELINE.arrival_rate,
+    ts: int = GENERIC_LITERATURE_BASELINE.idle_timer_slots,
+    tw: int = GENERIC_LITERATURE_BASELINE.wakeup_time,
     K_values: Optional[List[int]] = None,
     n_replications: int = 20,
     max_slots: int = 50000,
-    initial_energy: float = 5000.0,
+    initial_energy: float = GENERIC_LITERATURE_BASELINE.initial_energy_mwh,
     quick_mode: bool = False,
 ) -> Dict[str, Any]:
     """
@@ -564,7 +565,7 @@ def run_o6_experiments(
     if K_values is None:
         K_values = [3, 5, 10, None]
 
-    q = 1.0 / n_nodes
+    q = q_one_over_n(n_nodes)
     p = q * (1.0 - q) ** (n_nodes - 1)
     power_rates = PowerModel.get_profile(PowerProfile.GENERIC_LOW)
 
@@ -629,13 +630,13 @@ def run_o6_experiments(
 
 def run_o9_experiments(
     n_nodes: int = 100,
-    arrival_rate: float = 0.01,
-    tw: int = 2,
+    arrival_rate: float = GENERIC_LITERATURE_BASELINE.arrival_rate,
+    tw: int = GENERIC_LITERATURE_BASELINE.wakeup_time,
     q_values: Optional[List[float]] = None,
     ts_values: Optional[List[int]] = None,
     n_replications: int = 20,
     max_slots: int = 50000,
-    initial_energy: float = 5000.0,
+    initial_energy: float = GENERIC_LITERATURE_BASELINE.initial_energy_mwh,
     quick_mode: bool = False,
 ) -> Dict[str, Any]:
     """
@@ -668,10 +669,10 @@ def run_o9_experiments(
         max_slots = max(10000, max_slots // 5)
 
     if q_values is None:
-        q_values = list(np.linspace(0.005, 0.15, 8))
+        q_values = list(np.linspace(0.002, 0.05, 8))
 
     if ts_values is None:
-        ts_values = [1, 5, 10, 30, 50]
+        ts_values = [seconds_to_slots(v) for v in [0.5, 1, 2, 5, 10]]
 
     power_rates = PowerModel.get_profile(PowerProfile.GENERIC_LOW)
 
@@ -755,11 +756,11 @@ def run_comprehensive_experiments(
     # Base configuration
     base_config = SimulationConfig(
         n_nodes=20,
-        arrival_rate=0.01,
-        transmission_prob=0.05,
-        idle_timer=10,
-        wakeup_time=5,
-        initial_energy=5000,
+        arrival_rate=GENERIC_LITERATURE_BASELINE.arrival_rate,
+        transmission_prob=q_one_over_n(20),
+        idle_timer=seconds_to_slots(5.0),
+        wakeup_time=GENERIC_LITERATURE_BASELINE.wakeup_time,
+        initial_energy=GENERIC_LITERATURE_BASELINE.initial_energy_mwh,
         power_rates=PowerModel.get_profile(PowerProfile.GENERIC_LOW),
         max_slots=30000 if quick_mode else 50000,
         seed=None

@@ -15,6 +15,7 @@ from src.experiments import (
     SweepConfig,
     ScenarioConfig
 )
+from src.baselines import q_one_over_n, seconds_to_slots
 from src.simulator import SimulationConfig
 from src.power_model import PowerModel, PowerProfile
 
@@ -131,9 +132,9 @@ class TestScenarioExperiments(unittest.TestCase):
         self.assertEqual(scenario.name, "Low-Latency Priority")
         self.assertEqual(scenario.priority, "latency")
         # Should have small idle timer
-        self.assertEqual(scenario.config.idle_timer, 1)
+        self.assertEqual(scenario.config.idle_timer, seconds_to_slots(0.5))
         # Should have optimal q = 1/n
-        self.assertAlmostEqual(scenario.config.transmission_prob, 1.0/20, places=3)
+        self.assertAlmostEqual(scenario.config.transmission_prob, q_one_over_n(20), places=3)
     
     def test_create_battery_life_scenario(self):
         """Test battery-life scenario creation."""
@@ -146,9 +147,9 @@ class TestScenarioExperiments(unittest.TestCase):
         self.assertEqual(scenario.name, "Battery-Life Priority")
         self.assertEqual(scenario.priority, "battery")
         # Should have large idle timer
-        self.assertEqual(scenario.config.idle_timer, 50)
+        self.assertEqual(scenario.config.idle_timer, seconds_to_slots(10.0))
         # Should have low q
-        self.assertEqual(scenario.config.transmission_prob, 0.02)
+        self.assertEqual(scenario.config.transmission_prob, 0.5 * q_one_over_n(20))
     
     def test_create_balanced_scenario(self):
         """Test balanced scenario creation."""
@@ -161,8 +162,8 @@ class TestScenarioExperiments(unittest.TestCase):
         self.assertEqual(scenario.name, "Balanced")
         self.assertEqual(scenario.priority, "balanced")
         # Should have moderate values
-        self.assertEqual(scenario.config.idle_timer, 10)
-        self.assertEqual(scenario.config.transmission_prob, 0.05)
+        self.assertEqual(scenario.config.idle_timer, seconds_to_slots(5.0))
+        self.assertEqual(scenario.config.transmission_prob, q_one_over_n(20))
     
     def test_compare_scenarios(self):
         """Test scenario comparison."""
