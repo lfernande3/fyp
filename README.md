@@ -1,6 +1,5 @@
 # Sleep-Based Low-Latency Access for M2M Communications Simulator
 
-https://canva.link/d2w5bz80pqhx0dj
 
 ## Getting started (after cloning)
 
